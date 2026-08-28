@@ -85,3 +85,15 @@ Probe сопоставляет том с PhysicalDrive через `IOCTL_VOLUME_
 переключает offline/online через `IOCTL_DISK_SET_DISK_ATTRIBUTES` и проверяет
 `SetVolumeMountPointW` на временной пустой папке `C:\BBSStage0ApiMount`. Результат
 сохраняется в `.poc-work/stage0/storage-api-result.json`.
+
+Настоящий out-of-space проверяется на временном изолированном VHDX из elevated
+PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_out_of_space.ps1
+```
+
+Тестовый fixture создаётся только в `C:\BBSStage0Faults`, использует динамический
+VHDX размером 96 MiB и свободную букву `R:`. Скрипт не меняет реальные разделы или
+квоты и отсоединяет VHDX в `finally`. Результат сохраняется в
+`.poc-work/stage0/out-of-space-result.json`.
