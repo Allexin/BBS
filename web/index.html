@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BBS Status</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="eyebrow">BASOV BACKUP SYSTEM</span><h1>Backup status</h1></div>
+    <nav><a aria-current="page" href="index.html">Status</a><a href="logs.html">Logs</a></nav>
+  </header>
+  <main>
+    <section id="connection" class="notice" role="status">Loading current state…</section>
+    <section id="health" class="health-card" aria-labelledby="health-title">
+      <p class="eyebrow">SYSTEM HEALTH</p><h2 id="health-title">Unknown</h2><p id="health-meta"></p>
+      <ul id="health-issues" class="issue-list"></ul>
+    </section>
+    <section aria-labelledby="execution-title"><div class="section-title"><h2 id="execution-title">Current execution</h2></div><div id="operations" class="stack"></div></section>
+    <section aria-labelledby="jobs-title"><div class="section-title"><h2 id="jobs-title">Backup jobs</h2></div><div id="jobs" class="card-grid"></div></section>
+    <section aria-labelledby="disks-title"><div class="section-title"><h2 id="disks-title">Physical disks &amp; SMART</h2></div><div id="disks" class="card-grid"></div></section>
+    <section aria-labelledby="volumes-title"><div class="section-title"><h2 id="volumes-title">Volumes</h2></div><div id="volumes" class="card-grid"></div></section>
+  </main>
+  <footer>Read-only static projection · <span id="updated">not loaded</span></footer>
+  <script src="status.js" defer></script>
+</body>
+</html>

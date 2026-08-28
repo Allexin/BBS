@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BBS Logs</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div><span class="eyebrow">BASOV BACKUP SYSTEM</span><h1>Diagnostic logs</h1></div>
+    <nav><a href="index.html">Status</a><a aria-current="page" href="logs.html">Logs</a></nav>
+  </header>
+  <main>
+    <section id="log-change" class="notice hidden" role="status">Log changed on disk. <button id="refresh-log" type="button">Refresh explicitly</button></section>
+    <section class="filters" aria-label="Log filters">
+      <label>Date<select id="log-date"></select></label>
+      <label>Severity<select id="severity"><option value="">All</option><option>debug</option><option>info</option><option>warning</option><option>error</option><option>critical</option></select></label>
+      <label>Job<input id="job-filter" type="search" autocomplete="off"></label>
+      <label>Operation ID<input id="operation-filter" type="search" autocomplete="off"></label>
+      <label>Text<input id="text-filter" type="search" autocomplete="off"></label>
+    </section>
+    <p id="log-status" class="muted" role="status">Loading index…</p>
+    <section id="log-records" class="log-list" aria-label="Log records"></section>
+  </main>
+  <footer>Daily sanitized projection · opened days never auto-refresh</footer>
+  <script src="logs.js" defer></script>
+</body>
+</html>
