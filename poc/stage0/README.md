@@ -97,3 +97,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_out_o
 VHDX размером 96 MiB и свободную букву `R:`. Скрипт не меняет реальные разделы или
 квоты и отсоединяет VHDX в `finally`. Результат сохраняется в
 `.poc-work/stage0/out-of-space-result.json`.
+
+Исчезновение repository во время записи проверяется на отдельном временном VHDX:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_repository_io.ps1
+```
+
+После первого progress helper отсоединяет только созданный им VHDX, классифицирует
+первую repository retry diagnostic и cooperative-прерывает restic. Тест ограничен
+таймаутами; результат сохраняется в `.poc-work/stage0/repository-io-result.json`.
