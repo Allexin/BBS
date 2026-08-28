@@ -59,6 +59,45 @@ def test_snapshot_job_is_selected_by_discriminator() -> None:
     assert isinstance(config, SnapshotJobConfig)
 
 
+@pytest.mark.parametrize(
+    ("encryption", "valid"),
+    [
+        ({"mode": "none"}, True),
+        ({"mode": "password", "passphrase": "test-only-secret"}, True),
+        ({"mode": "password"}, False),
+        ({"mode": "none", "passphrase": "unexpected"}, False),
+        ({"mode": "environment"}, False),
+    ],
+)
+def test_repository_encryption_contract(encryption: dict[str, str], valid: bool) -> None:
+    repository = _repository()
+    repository["encryption"] = encryption
+    value = {
+        "schema_version": 1,
+        "id": "data",
+        "kind": "snapshot",
+        "display_name": "Data",
+        "source": {"path": "F:\\"},
+        "excludes": [],
+        "repository": repository,
+        "disk": _disk(),
+        "backup": {"host": "test-host", "tags": ["job:data"], "read_error_result": "failed"},
+        "retention": {
+            "keep_last": 1,
+            "keep_daily": 0,
+            "keep_weekly": 4,
+            "keep_monthly": 6,
+            "keep_yearly": 0,
+        },
+        "verification": {"data_subset_parts": 4, "restore_test_paths": []},
+    }
+    if valid:
+        EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(value)
+    else:
+        with pytest.raises(ValidationError):
+            EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(value)
+
+
 def test_mirror_job_rejects_snapshot_only_fields() -> None:
     value = {
         "schema_version": 1,

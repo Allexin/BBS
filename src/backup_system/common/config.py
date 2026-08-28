@@ -143,7 +143,16 @@ class SourceConfig(StrictModel):
 
 
 class EncryptionConfig(StrictModel):
-    mode: Literal["none", "environment", "password-file"]
+    mode: Literal["none", "password"]
+    passphrase: str | None = Field(default=None, min_length=1)
+
+    @model_validator(mode="after")
+    def validate_passphrase(self) -> EncryptionConfig:
+        if self.mode == "password" and self.passphrase is None:
+            raise ValueError("password mode requires passphrase")
+        if self.mode == "none" and self.passphrase is not None:
+            raise ValueError("none mode forbids passphrase")
+        return self
 
 
 class RepositoryConfig(StrictModel):
