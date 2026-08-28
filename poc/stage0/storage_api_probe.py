@@ -247,10 +247,20 @@ def main() -> int:
         MOUNT_PATH.rmdir()
     MOUNT_PATH.mkdir(parents=True)
     mount_argument = str(MOUNT_PATH) + "\\"
+    mount_attempts = 0
     try:
-        if not kernel32.SetVolumeMountPointW(mount_argument, guid):
-            raise win_error("SetVolumeMountPointW failed")
-        mount_created = True
+        mount_deadline = time.monotonic() + 30
+        while time.monotonic() < mount_deadline:
+            mount_attempts += 1
+            if kernel32.SetVolumeMountPointW(mount_argument, guid):
+                mount_created = True
+                break
+            error_code = ctypes.get_last_error()
+            if error_code != 87:
+                raise ctypes.WinError(error_code, "SetVolumeMountPointW failed")
+            time.sleep(0.5)
+        if not mount_created:
+            raise ctypes.WinError(87, "SetVolumeMountPointW remained unavailable for 30 seconds")
         if volume_name_for_mount(mount_argument) != guid:
             raise RuntimeError("mounted folder does not expose the expected volume GUID")
     finally:
@@ -269,6 +279,7 @@ def main() -> int:
             "direct_ioctl_offline_observed": offline_observed,
             "direct_ioctl_online_restored": online_restored,
             "temporary_mount_point_verified": True,
+            "mount_point_attempts": mount_attempts,
         }
     )
     print(f"Result saved to: {RESULT_PATH}")

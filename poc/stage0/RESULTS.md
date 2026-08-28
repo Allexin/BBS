@@ -16,7 +16,7 @@
 | VSS binding и отсутствие orphan | Пройдено на синтетических данных |
 | Стабильный namespace через VSS | Пройдено: VSS device prefix отсутствует |
 | Online/offline тестового диска | Пройдено через Windows Storage cmdlet |
-| Прямой Windows Storage API и восстановление mount point | Ожидает отдельного Python PoC |
+| Прямой Windows Storage API и восстановление mount point | Пройдено |
 | restic fail-fast | Пройдено для source read error |
 | Принудительное прерывание и recovery | Пройдено для restic repository |
 
@@ -36,3 +36,10 @@ Fail-fast probe получил машинно-разбираемый source read
 ошибка restic 0.19.1 поступила через stderr: snapshot adapter обязан асинхронно читать
 и классифицировать оба потока процесса. Repository write/I/O и out-of-space требуют
 отдельных fault-injection проверок.
+
+Elevated Python probe напрямую сопоставил том с PhysicalDrive, подтвердил offline и
+online через `DeviceIoControl`, затем назначил дополнительный mount point через
+`SetVolumeMountPointW` и сверил Volume GUID. Первый вызов mount API сразу после
+возврата диска дал transient WinError 87, повторный запуск прошёл; probe получил
+ограниченный retry этого кода на 30 секунд. После проверки диск online/Healthy,
+временный mount point удалён.
