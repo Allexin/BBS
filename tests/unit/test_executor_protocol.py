@@ -57,9 +57,9 @@ def test_oversized_and_incomplete_lines_are_rejected() -> None:
 
 
 def test_argv_is_positional_and_operation_specific(tmp_path: Path) -> None:
-    executable = tmp_path / "backup-executor.exe"
+    executable = tmp_path / "python.exe"
     invocation = ExecutorInvocation(
-        executable=executable,
+        python_executable=executable,
         operation="check",
         run_id=RUN_ID,
         job_id="job-1",
@@ -67,6 +67,8 @@ def test_argv_is_positional_and_operation_specific(tmp_path: Path) -> None:
     )
     assert invocation.argv() == (
         str(executable),
+        "-m",
+        "backup_system.executor",
         "check",
         "--run-id",
         str(RUN_ID),
@@ -79,7 +81,7 @@ def test_argv_is_positional_and_operation_specific(tmp_path: Path) -> None:
 
 def test_restore_requires_absolute_request_file(tmp_path: Path) -> None:
     invocation = ExecutorInvocation(
-        executable=tmp_path / "backup-executor.exe",
+        python_executable=tmp_path / "python.exe",
         operation="restore",
         run_id=RUN_ID,
         job_id="job-1",

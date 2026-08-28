@@ -24,7 +24,7 @@ class ExecutorProtocolError(RuntimeError):
 
 @dataclass(frozen=True, slots=True)
 class ExecutorInvocation:
-    executable: Path
+    python_executable: Path
     operation: str
     run_id: UUID
     job_id: str
@@ -32,8 +32,8 @@ class ExecutorInvocation:
     request_file: Path | None = None
 
     def argv(self) -> tuple[str, ...]:
-        if not self.executable.is_absolute():
-            raise ValueError("executor executable path must be absolute")
+        if not self.python_executable.is_absolute():
+            raise ValueError("Python executable path must be absolute")
         if self.operation not in {
             "run",
             "check",
@@ -45,7 +45,9 @@ class ExecutorInvocation:
         }:
             raise ValueError("unsupported executor operation")
         arguments = [
-            str(self.executable),
+            str(self.python_executable),
+            "-m",
+            "backup_system.executor",
             self.operation,
             "--run-id",
             str(self.run_id),
