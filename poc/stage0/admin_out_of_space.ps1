@@ -89,8 +89,18 @@ try {
         throw "restic init failed:`n$($initOutput -join "`n")"
     }
 
-    $backupOutput = @(& $resticPath --repo $repository --insecure-no-password --no-cache backup --json $sourcePath 2>&1 | ForEach-Object { $_.ToString() })
-    $backupExitCode = $LASTEXITCODE
+    $stdoutPath = Join-Path $fixtureRoot 'restic-stdout.jsonl'
+    $stderrPath = Join-Path $fixtureRoot 'restic-stderr.txt'
+    $backupProcess = Start-Process -FilePath $resticPath -ArgumentList @(
+        '--repo', $repository,
+        '--insecure-no-password',
+        '--no-cache',
+        'backup', '--json', $sourcePath
+    ) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
+    $backupExitCode = $backupProcess.ExitCode
+    $stdoutLines = if (Test-Path -LiteralPath $stdoutPath) { @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8) } else { @() }
+    $stderrLines = if (Test-Path -LiteralPath $stderrPath) { @(Get-Content -LiteralPath $stderrPath -Encoding UTF8) } else { @() }
+    $backupOutput = @($stdoutLines) + @($stderrLines)
     $events = @($backupOutput | ForEach-Object {
         try { $_ | ConvertFrom-Json -ErrorAction Stop } catch { $null }
     })
