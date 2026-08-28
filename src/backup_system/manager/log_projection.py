@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 from uuid import UUID, uuid4
@@ -13,6 +13,8 @@ from uuid import UUID, uuid4
 from pydantic import AwareDatetime, BaseModel, ConfigDict
 
 from backup_system.manager.journal import JournalRecord, Severity
+
+_RETENTION_DAYS = 60
 
 
 class _PublicModel(BaseModel):
@@ -86,9 +88,20 @@ class LogProjectionPublisher:
             records=tuple(records),
         )
         self._directory.mkdir(parents=True, exist_ok=True)
+        self._delete_expired(local_date)
         _replace_json(self._directory / f"{local_date.isoformat()}.json", projection)
         self._publish_index(generated_at=updated_at)
         return projection
+
+    def _delete_expired(self, local_date: date) -> None:
+        cutoff = local_date - timedelta(days=_RETENTION_DAYS)
+        for path in self._directory.glob("????-??-??.json"):
+            try:
+                file_date = date.fromisoformat(path.stem)
+            except ValueError:
+                continue
+            if file_date < cutoff and path.is_file() and not path.is_symlink():
+                path.unlink()
 
     def _publish_index(self, *, generated_at: datetime) -> PublicLogIndex:
         days: list[PublicLogIndexEntry] = []

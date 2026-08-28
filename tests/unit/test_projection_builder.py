@@ -97,6 +97,7 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         )
 
         assert status.generation_id == health.generation_id
+        assert status.backup_disk_state == "offline"
         assert status.jobs[0].kind == "snapshot"
         assert status.jobs[0].last_run is not None
         assert status.jobs[0].last_run.state == "queued"
@@ -112,6 +113,7 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         assert metric.last_regression_at == now - timedelta(hours=1)
         assert status.volumes[0].used_bytes == 7500
         assert status.volumes[0].free_percent == 25
+        assert not status.volumes[0].stale
 
         public_json = json.dumps(status.model_dump(mode="json"))
         assert "SECRET-SERIAL" not in public_json

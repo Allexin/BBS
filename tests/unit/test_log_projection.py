@@ -76,3 +76,24 @@ def test_republishing_day_replaces_array_instead_of_appending(tmp_path: Path) ->
     payload = json.loads((public / "2026-08-28.json").read_text(encoding="utf-8"))
     assert first.generation_id != second.generation_id
     assert [item["event"] for item in payload["records"]] == ["first", "second"]
+
+
+def test_public_log_retention_removes_only_expired_owned_days(tmp_path: Path) -> None:
+    source = tmp_path / "private"
+    public = tmp_path / "public"
+    source.mkdir()
+    public.mkdir()
+    (public / "2026-06-28.json").write_text("{}", encoding="utf-8")
+    boundary = public / "2026-06-29.json"
+    boundary.write_text("{}", encoding="utf-8")
+    unrelated = public / "keep.json"
+    unrelated.write_text("keep", encoding="utf-8")
+    LogProjectionPublisher(public).publish_day(
+        source / "2026-08-28.jsonl",
+        local_date=date(2026, 8, 28),
+        updated_at=datetime(2026, 8, 28, tzinfo=UTC),
+        job_display_names={},
+    )
+    assert not (public / "2026-06-28.json").exists()
+    assert boundary.exists()
+    assert unrelated.exists()

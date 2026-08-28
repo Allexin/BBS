@@ -20,6 +20,7 @@ def _projections(generation_id: UUID) -> tuple[StatusProjection, HealthProjectio
         generation_id=generation_id,
         generated_at=now,
         overall_health="healthy",
+        backup_disk_state="offline",
         operations=(),
         jobs=(),
         disks=(),

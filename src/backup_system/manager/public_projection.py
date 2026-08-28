@@ -105,6 +105,7 @@ class PublicVolume(PublicModel):
     disk_id: str
     role: str
     online: bool
+    stale: bool
     total_bytes: int | None = Field(default=None, ge=0)
     used_bytes: int | None = Field(default=None, ge=0)
     free_bytes: int | None = Field(default=None, ge=0)
@@ -124,6 +125,7 @@ class StatusProjection(PublicModel):
     generation_id: UUID
     generated_at: AwareDatetime
     overall_health: Literal["healthy", "warning", "critical", "unknown"]
+    backup_disk_state: Literal["offline", "online_during_backup", "error", "unknown"]
     operations: tuple[PublicOperation, ...]
     jobs: tuple[PublicJob, ...]
     disks: tuple[PublicDisk, ...]

@@ -25,7 +25,7 @@ from backup_system.manager.public_projection import (
 )
 
 _SEVERITY = {"healthy": 0, "unknown": 1, "warning": 2, "critical": 3}
-_TREND_FIELDS = (
+_REGRESSION_FIELDS = (
     "reallocated_sectors",
     "pending_sectors",
     "offline_uncorrectable",
@@ -33,6 +33,13 @@ _TREND_FIELDS = (
     "interface_crc_errors",
     "nvme_percentage_used",
     "nvme_media_errors",
+)
+_DISPLAY_SMART_FIELDS = (
+    "overall_passed",
+    "nvme_critical_warning",
+    "temperature_celsius",
+    "power_on_hours",
+    *_REGRESSION_FIELDS,
 )
 
 
@@ -44,11 +51,15 @@ class ProjectionBuilder:
         job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance"]] | None = None,
         job_deadlines: dict[str, str | None] | None = None,
         next_operations: dict[str, str] | None = None,
+        volume_stale_after_seconds: int = 120,
     ) -> None:
         self._connection = connection
         self._job_kinds = job_kinds or {}
         self._job_deadlines = job_deadlines or {}
         self._next_operations = next_operations or {}
+        if volume_stale_after_seconds <= 0:
+            raise ValueError("volume stale threshold must be positive")
+        self._volume_stale_after = timedelta(seconds=volume_stale_after_seconds)
 
     def build(
         self,
@@ -63,13 +74,16 @@ class ProjectionBuilder:
         jobs, job_issues = self._jobs(timestamp)
         disks, disk_issues = self._disks(timestamp)
         operations = self._operations(timestamp)
-        volumes = self._volumes()
+        volumes = self._volumes(timestamp)
         issues = (*job_issues, *disk_issues)
         overall = _overall_health(jobs, disks, issues)
         status = StatusProjection(
             generation_id=generation_id,
             generated_at=timestamp,
             overall_health=overall,
+            backup_disk_state=_backup_disk_state(
+                disks, bool(operations and operations[0].state == "running")
+            ),
             operations=operations,
             jobs=jobs,
             disks=disks,
@@ -326,7 +340,7 @@ class ProjectionBuilder:
         latest_time, latest = observations[0]
         previous = observations[1][1] if len(observations) > 1 else {}
         result: dict[str, PublicSmartMetric] = {}
-        for field in _TREND_FIELDS:
+        for field in _DISPLAY_SMART_FIELDS:
             current_value = latest.get(field)
             previous_value = previous.get(field)
             result[field] = PublicSmartMetric(
@@ -335,11 +349,13 @@ class ProjectionBuilder:
                 delta=_delta(current_value, previous_value),
                 change_24h=_window_delta(observations, field, latest_time - timedelta(hours=24)),
                 change_30d=_window_delta(observations, field, latest_time - timedelta(days=30)),
-                last_regression_at=_last_regression(observations, field),
+                last_regression_at=(
+                    _last_regression(observations, field) if field in _REGRESSION_FIELDS else None
+                ),
             )
         return result
 
-    def _volumes(self) -> tuple[PublicVolume, ...]:
+    def _volumes(self, now: datetime) -> tuple[PublicVolume, ...]:
         rows = self._connection.execute(
             """SELECT volumes.public_volume_id, volumes.display_name, volumes.label,
                 volumes.filesystem, physical_disks.public_disk_id, volumes.role,
@@ -356,6 +372,7 @@ class ProjectionBuilder:
         for row in rows:
             total, free = row[8], row[9]
             used = total - free if total is not None and free is not None else None
+            observed_at = datetime.fromisoformat(str(row[6])) if row[6] else None
             result.append(
                 PublicVolume(
                     volume_id=str(row[0]),
@@ -365,11 +382,12 @@ class ProjectionBuilder:
                     disk_id=str(row[4]),
                     role=str(row[5]),
                     online=bool(row[7]) if row[7] is not None else False,
+                    stale=(observed_at is None or now - observed_at > self._volume_stale_after),
                     total_bytes=total,
                     used_bytes=used,
                     free_bytes=free,
                     free_percent=(free * 100 / total if total and free is not None else None),
-                    observed_at=datetime.fromisoformat(str(row[6])) if row[6] else None,
+                    observed_at=observed_at,
                 )
             )
         return tuple(result)
@@ -439,6 +457,22 @@ def _overall_health(
     if not values:
         return "unknown"
     return max(values, key=lambda value: _SEVERITY[value])
+
+
+def _backup_disk_state(
+    disks: tuple[PublicDisk, ...], running: bool
+) -> Literal["offline", "online_during_backup", "error", "unknown"]:
+    backup_disks = [disk for disk in disks if disk.role == "backup"]
+    if not backup_disks:
+        return "unknown"
+    states = {disk.operational_state for disk in backup_disks}
+    if "missing" in states:
+        return "error"
+    if states == {"offline"}:
+        return "offline"
+    if running and states <= {"offline", "online"} and "online" in states:
+        return "online_during_backup"
+    return "unknown"
 
 
 def _utc(value: datetime) -> datetime:
