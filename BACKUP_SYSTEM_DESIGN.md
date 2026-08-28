@@ -1534,7 +1534,9 @@ excludes:
 
 repository:
   engine: restic
+  repository_id: primary
   path: 'C:\BackupVolumes\primary\restic'
+  marker_uuid: '<uuid4>'
   encryption:
     mode: none
   marker_file: 'C:\BackupVolumes\primary\.backup-volume.json'
@@ -1562,6 +1564,59 @@ verification:
   data_subset_parts: 4
   restore_test_paths:
     - 'F:\<control-file-relative-path>'
+```
+
+Форма `mirror` job использует те же `source`, `excludes` и `disk`, но вместо
+`repository`, `backup` и `retention` содержит один destination:
+
+```yaml
+schema_version: 1
+id: data-mirror
+kind: mirror
+display_name: Data mirror
+source:
+  path: 'F:\'
+excludes: []
+destination:
+  path: 'C:\BackupVolumes\primary\mirrors\data'
+  marker_file: 'C:\BackupVolumes\primary\mirrors\data\.backup-system\marker.json'
+  marker_uuid: '<uuid4>'
+disk:
+  physical_serial: '<normalized-serial>'
+  expected_size_bytes: 4000787030016
+  partition_guid: '<guid>'
+  volume_guid: '<guid>'
+  repository_path_timeout_seconds: 30
+verification:
+  restore_test_paths:
+    - 'F:\<control-file-relative-path>'
+```
+
+Форма repository-wide `maintenance` job не имеет source/excludes и явно ссылается
+на единственную owning snapshot job. Поля `repository` и `disk` обязаны в точности
+совпадать с owner; executor загружает оба job configs и проверяет это до disk
+lifecycle:
+
+```yaml
+schema_version: 1
+id: data-maintenance
+kind: maintenance
+display_name: Data repository maintenance
+repository_owner_job_id: data
+repository:
+  engine: restic
+  repository_id: primary
+  path: 'C:\BackupVolumes\primary\restic'
+  marker_uuid: '<same-uuid-as-owner>'
+  encryption:
+    mode: none
+  marker_file: 'C:\BackupVolumes\primary\.backup-volume.json'
+disk:
+  physical_serial: '<same-serial-as-owner>'
+  expected_size_bytes: 4000787030016
+  partition_guid: '<same-guid-as-owner>'
+  volume_guid: '<same-guid-as-owner>'
+  repository_path_timeout_seconds: 30
 ```
 
 Один `job_id` соответствует одному файлу `jobs/<job-id>.yaml`; дополнительные пути и поиск по glob запрещены. Job ID соответствует регулярному выражению `^[a-z][a-z0-9-]{0,62}$`.
