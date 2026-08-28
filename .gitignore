@@ -1,1 +1,5 @@
 .aide/
+.tools/
+.poc-work/
+__pycache__/
+*.py[cod]
