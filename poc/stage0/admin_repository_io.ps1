@@ -34,6 +34,7 @@ $sourcePath = Join-Path $fixtureRoot 'random-source.bin'
 $script:DiskPartScript = Join-Path $fixtureRoot 'diskpart.txt'
 $helperDiskPartScript = Join-Path $fixtureRoot 'detach-from-helper.txt'
 $resultPath = Join-Path $projectRoot '.poc-work\stage0\repository-io-result.json'
+$debugPath = Join-Path $projectRoot '.poc-work\stage0\repository-io-debug.json'
 $lock = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'restic.lock.json') -Raw -Encoding UTF8 | ConvertFrom-Json
 $resticPath = Join-Path $projectRoot ".tools\restic-$($lock.version)\restic_$($lock.version)_windows_amd64.exe"
 $helperPath = Join-Path $PSScriptRoot 'restic_repository_io.py'
@@ -46,6 +47,7 @@ if (Test-Path -LiteralPath $fixtureRoot) {
 }
 New-Item -ItemType Directory -Path $fixtureRoot -Force | Out-Null
 New-Item -ItemType Directory -Path (Split-Path -Parent $resultPath) -Force | Out-Null
+Remove-Item -LiteralPath $debugPath -Force -ErrorAction SilentlyContinue
 
 $actualHash = (Get-FileHash -LiteralPath $resticPath -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($actualHash -ne $lock.executable_sha256) {
@@ -90,7 +92,7 @@ try {
         throw "restic init failed:`n$($initOutput -join "`n")"
     }
 
-    $helperOutput = @(& python $helperPath --restic $resticPath --repository $repository --source $sourcePath --vhd $vhdPath --diskpart-script $helperDiskPartScript 2>&1)
+    $helperOutput = @(& python $helperPath --restic $resticPath --repository $repository --source $sourcePath --vhd $vhdPath --diskpart-script $helperDiskPartScript --debug-output $debugPath 2>&1)
     if ($LASTEXITCODE -ne 0) {
         throw "repository I/O helper failed:`n$($helperOutput -join "`n")"
     }

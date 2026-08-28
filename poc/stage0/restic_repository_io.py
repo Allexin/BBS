@@ -48,6 +48,7 @@ def main() -> int:
     parser.add_argument("--source", required=True)
     parser.add_argument("--vhd", required=True, type=Path)
     parser.add_argument("--diskpart-script", required=True, type=Path)
+    parser.add_argument("--debug-output", required=True, type=Path)
     args = parser.parse_args()
 
     command = [
@@ -128,6 +129,20 @@ def main() -> int:
         if detached_at is None:
             raise RuntimeError("backup produced no progress before timeout or exit")
         if diagnostic_at is None:
+            args.debug_output.parent.mkdir(parents=True, exist_ok=True)
+            args.debug_output.write_text(
+                json.dumps(
+                    {
+                        "process_return_code": process.poll(),
+                        "detached": True,
+                        "structured_error_events": structured_errors,
+                        "stdout_tail": stdout_lines[-30:],
+                        "stderr_tail": stderr_lines[-30:],
+                    },
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             raise RuntimeError("no classifiable repository error was observed after detach")
         try:
             process.wait(timeout=15)
