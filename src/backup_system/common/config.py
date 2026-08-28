@@ -6,6 +6,7 @@ import re
 from pathlib import PureWindowsPath
 from typing import Annotated, Literal
 from uuid import UUID
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
@@ -35,6 +36,14 @@ def _validate_absolute_windows_path(value: str) -> str:
     return value
 
 
+def _validate_timezone(value: str) -> str:
+    try:
+        ZoneInfo(value)
+    except ZoneInfoNotFoundError as error:
+        raise ValueError("must be a valid IANA timezone") from error
+    return value
+
+
 class CycleItem(StrictModel):
     operation: Literal["backup", "check", "prune"]
     mode: Literal["metadata", "subset", "full"] | None = None
@@ -53,6 +62,8 @@ class ScheduleConfig(StrictModel):
     timezone: str
     deadline: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     cycle: tuple[CycleItem, ...] = Field(min_length=1)
+
+    _valid_timezone = field_validator("timezone")(_validate_timezone)
 
     @field_validator("cron")
     @classmethod
@@ -101,6 +112,7 @@ class TelegramConfig(StrictModel):
     stale_manager_minutes: int = Field(gt=0)
 
     _valid_cron = field_validator("daily_report_cron")(ScheduleConfig.validate_cron)
+    _valid_timezone = field_validator("daily_report_timezone")(_validate_timezone)
 
 
 class ManagerConfig(StrictModel):
@@ -110,6 +122,8 @@ class ManagerConfig(StrictModel):
     monitoring: MonitoringConfig
     jobs: tuple[ManagerJobConfig, ...]
     telegram: TelegramConfig
+
+    _valid_timezone = field_validator("timezone")(_validate_timezone)
 
     @model_validator(mode="after")
     def unique_ids(self) -> ManagerConfig:
