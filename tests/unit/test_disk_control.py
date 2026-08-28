@@ -3,6 +3,7 @@ from dataclasses import replace
 import pytest
 
 from backup_system.common.config import DiskConfig
+from backup_system.executor.cancellation import CancellationRequested, CancellationToken
 from backup_system.executor.disk_control import (
     DiskCandidate,
     DiskController,
@@ -134,3 +135,20 @@ def test_online_timeout_is_bounded() -> None:
     verified = controller.inspect(_config()).verified
     with pytest.raises(DiskStateTimeoutError, match="did not become False"):
         controller.bring_online(_config(), verified)
+
+
+def test_online_wait_is_cancellable_but_offline_cleanup_is_not() -> None:
+    storage = FakeStorage(_candidate())
+    cancellation = CancellationToken()
+    cancellation.request()
+    controller = DiskController(
+        storage,
+        cancellation_checkpoint=cancellation.raise_if_requested,
+    )
+    verified = controller.inspect(_config()).verified
+
+    with pytest.raises(CancellationRequested):
+        controller.bring_online(_config(), verified)
+
+    controller.take_offline(_config(), verified)
+    assert storage.set_calls == [(7, False), (7, True)]

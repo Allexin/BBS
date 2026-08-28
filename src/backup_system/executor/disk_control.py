@@ -80,6 +80,7 @@ class DiskController:
         poll_seconds: float = 0.25,
         monotonic: Callable[[], float] = time.monotonic,
         sleep: Callable[[float], None] = time.sleep,
+        cancellation_checkpoint: Callable[[], None] | None = None,
     ) -> None:
         if state_timeout_seconds <= 0 or poll_seconds <= 0:
             raise ValueError("disk state timeout and poll interval must be positive")
@@ -88,6 +89,7 @@ class DiskController:
         self._poll_seconds = poll_seconds
         self._monotonic = monotonic
         self._sleep = sleep
+        self._cancellation_checkpoint = cancellation_checkpoint or (lambda: None)
 
     def inspect(self, config: DiskConfig) -> DiskObservation:
         candidate = self._locate(config)
@@ -97,7 +99,7 @@ class DiskController:
         candidate = self._reverify(config, verified_disk)
         if candidate.offline:
             self._backend.set_offline(candidate.disk_number, False)
-        self._wait_for_state(candidate.disk_number, offline=False)
+        self._wait_for_state(candidate.disk_number, offline=False, cancellable=True)
 
     def ensure_repository_path(
         self, config: DiskConfig, verified_disk: VerifiedDisk
@@ -108,6 +110,7 @@ class DiskController:
         self._backend.ensure_mount_point(config.volume_guid, config.mount_point)
         deadline = self._monotonic() + config.repository_path_timeout_seconds
         while self._monotonic() < deadline:
+            self._cancellation_checkpoint()
             if self._backend.path_available(config.mount_point):
                 return VolumeObservation(config.volume_guid, config.mount_point, True)
             self._sleep(self._poll_seconds)
@@ -117,7 +120,7 @@ class DiskController:
         candidate = self._reverify(config, verified_disk)
         if not candidate.offline:
             self._backend.set_offline(candidate.disk_number, True)
-        self._wait_for_state(candidate.disk_number, offline=True)
+        self._wait_for_state(candidate.disk_number, offline=True, cancellable=False)
 
     def _reverify(self, config: DiskConfig, verified_disk: VerifiedDisk) -> DiskCandidate:
         candidate = self._locate(config)
@@ -158,9 +161,11 @@ class DiskController:
             _normalize_guid(candidate.volume_guid),
         )
 
-    def _wait_for_state(self, disk_number: int, *, offline: bool) -> None:
+    def _wait_for_state(self, disk_number: int, *, offline: bool, cancellable: bool) -> None:
         deadline = self._monotonic() + self._state_timeout
         while self._monotonic() < deadline:
+            if cancellable:
+                self._cancellation_checkpoint()
             if self._backend.is_offline(disk_number) is offline:
                 return
             self._sleep(self._poll_seconds)
