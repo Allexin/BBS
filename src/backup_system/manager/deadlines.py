@@ -81,7 +81,7 @@ class DeadlineMonitor:
                     run_id=run_id,
                     kind="deadline_overrun",
                     payload={
-                        "job_id": str(row[1]),
+                        "job": str(row[1]),
                         "stage": str(row[2]) if row[2] is not None else None,
                         "elapsed_seconds": int((timestamp - started_at).total_seconds()),
                         "overrun_seconds": int((timestamp - deadline_at).total_seconds()),
@@ -111,7 +111,7 @@ class DeadlineMonitor:
                     run_id=run_id,
                     kind="deadline_overrun_finished",
                     payload={
-                        "job_id": str(row[1]),
+                        "job": str(row[1]),
                         "overrun_seconds": int(row[2]),
                     },
                     created_at=timestamp,

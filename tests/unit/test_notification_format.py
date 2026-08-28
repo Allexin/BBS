@@ -1,0 +1,64 @@
+from uuid import uuid4
+
+import pytest
+
+from backup_system.manager.notification_format import render_notification
+from backup_system.manager.notifications import PendingNotification
+
+
+def _notification(kind: str, payload: dict[str, object]) -> PendingNotification:
+    return PendingNotification(uuid4(), "key", None, kind, payload, 0)
+
+
+def test_daily_report_explicitly_mentions_empty_sections() -> None:
+    text = render_notification(_notification("daily_report", {"health": "healthy"}))
+    assert "Health: healthy" in text
+    assert "Backup jobs were not run" in text
+    assert "No errors" in text
+
+
+def test_startup_report_aggregates_missed_operations() -> None:
+    text = render_notification(
+        _notification(
+            "startup_report",
+            {
+                "downtime_seconds": 3700,
+                "interrupted": ["Data backup"],
+                "missed_backups": ["Photos at 2026-08-28T00:00:00+04:00"],
+                "missed_checks": [],
+                "missed_other_count": 2,
+            },
+        )
+    )
+    assert "Manager downtime: 1h 1m" in text
+    assert "Interrupted: Data backup" in text
+    assert "Missed backup: Photos" in text
+    assert "Missed maintenance operations: 2" in text
+
+
+def test_deadline_and_smart_messages_are_bounded_structured_text() -> None:
+    deadline = render_notification(
+        _notification(
+            "deadline_overrun",
+            {"job": "Data", "stage": "backup", "elapsed_seconds": 3900, "overrun_seconds": 300},
+        )
+    )
+    smart = render_notification(
+        _notification(
+            "smart_regression",
+            {
+                "disk": "Backup disk",
+                "indicator": "pending_sectors",
+                "previous": 0,
+                "current": 1,
+                "severity": "critical",
+            },
+        )
+    )
+    assert "Elapsed: 1h 5m" in deadline and "Overrun: 5m 0s" in deadline
+    assert "Change: 0 -> 1" in smart
+
+
+def test_unknown_notification_kind_is_rejected() -> None:
+    with pytest.raises(ValueError, match="unsupported"):
+        render_notification(_notification("unknown", {}))
