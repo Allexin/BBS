@@ -26,6 +26,17 @@ class PublicRun(PublicModel):
     deadline_exceeded: bool = False
 
 
+class PublicBackupMetrics(PublicModel):
+    source_logical_bytes: int | None = Field(default=None, ge=0)
+    protected_logical_bytes: int | None = Field(default=None, ge=0)
+    retained_logical_bytes: int | None = Field(default=None, ge=0)
+    bytes_read: int | None = Field(default=None, ge=0)
+    bytes_written: int | None = Field(default=None, ge=0)
+    repository_added_bytes: int | None = Field(default=None, ge=0)
+    repository_physical_bytes: int | None = Field(default=None, ge=0)
+    repository_free_bytes: int | None = Field(default=None, ge=0)
+
+
 class PublicJob(PublicModel):
     job_id: str
     display_name: str
@@ -38,6 +49,7 @@ class PublicJob(PublicModel):
     last_run: PublicRun | None = None
     previous_run: PublicRun | None = None
     last_success_at: AwareDatetime | None = None
+    backup_metrics: PublicBackupMetrics | None = None
 
 
 class PublicProgress(PublicModel):
@@ -88,10 +100,16 @@ class PublicDisk(PublicModel):
 class PublicVolume(PublicModel):
     volume_id: str
     display_name: str
+    label: str | None = None
+    filesystem: str | None = None
+    disk_id: str
     role: str
     online: bool
     total_bytes: int | None = Field(default=None, ge=0)
+    used_bytes: int | None = Field(default=None, ge=0)
     free_bytes: int | None = Field(default=None, ge=0)
+    free_percent: float | None = Field(default=None, ge=0, le=100)
+    observed_at: AwareDatetime | None = None
 
 
 class PublicHealthIssue(PublicModel):
