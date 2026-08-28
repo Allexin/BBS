@@ -172,11 +172,15 @@ def wait_for_attribute(disk_number: int, offline: bool, timeout: float = 30) -> 
     raise RuntimeError(f"disk offline state did not become {offline}")
 
 
-def volume_guid(drive: str) -> str:
+def volume_name_for_mount(mount_path: str) -> str:
     buffer = ctypes.create_unicode_buffer(128)
-    if not kernel32.GetVolumeNameForVolumeMountPointW(f"{drive}:\\", buffer, len(buffer)):
+    if not kernel32.GetVolumeNameForVolumeMountPointW(mount_path, buffer, len(buffer)):
         raise win_error("GetVolumeNameForVolumeMountPointW failed")
     return buffer.value
+
+
+def volume_guid(drive: str) -> str:
+    return volume_name_for_mount(f"{drive}:\\")
 
 
 def write_result(value: dict[str, object]) -> None:
@@ -214,9 +218,6 @@ def main() -> int:
         raise RuntimeError("test disk must initially be online")
 
     guid = volume_guid(drive)
-    marker = Path(f"{drive}:\\bbs-stage0-poc\\api-marker.txt")
-    marker.parent.mkdir(parents=True, exist_ok=True)
-    marker.write_text("direct storage api probe", encoding="ascii")
     mount_created = False
     offline_observed = False
     online_restored = False
@@ -230,10 +231,15 @@ def main() -> int:
         online_restored = True
 
     deadline = time.monotonic() + 30
-    while time.monotonic() < deadline and not marker.exists():
-        time.sleep(0.5)
-    if not marker.exists():
-        raise RuntimeError("drive mount did not return after online")
+    remounted_guid: str | None = None
+    while time.monotonic() < deadline:
+        try:
+            remounted_guid = volume_guid(drive)
+            break
+        except OSError:
+            time.sleep(0.5)
+    if remounted_guid != guid:
+        raise RuntimeError("drive mount did not return with the expected volume GUID")
 
     if MOUNT_PATH.exists():
         if any(MOUNT_PATH.iterdir()):
@@ -245,16 +251,13 @@ def main() -> int:
         if not kernel32.SetVolumeMountPointW(mount_argument, guid):
             raise win_error("SetVolumeMountPointW failed")
         mount_created = True
-        mounted_marker = MOUNT_PATH / marker.name
-        if not mounted_marker.is_file() or mounted_marker.read_text(encoding="ascii") != "direct storage api probe":
-            raise RuntimeError("mounted folder does not expose the expected volume")
+        if volume_name_for_mount(mount_argument) != guid:
+            raise RuntimeError("mounted folder does not expose the expected volume GUID")
     finally:
         if mount_created and not kernel32.DeleteVolumeMountPointW(mount_argument):
             raise win_error("DeleteVolumeMountPointW failed")
         if MOUNT_PATH.exists():
             MOUNT_PATH.rmdir()
-        if marker.exists():
-            marker.unlink()
 
     write_result(
         {
