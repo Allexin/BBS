@@ -6,12 +6,14 @@ import pytest
 
 from backup_system.common.config import ScheduleConfig
 from backup_system.manager.database import open_manager_database
+from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import (
     EnqueueDisposition,
     EnqueueResult,
     OperationsRepository,
 )
 from backup_system.manager.schedule_store import ScheduleStore
+from backup_system.manager.scheduler_events import SchedulerEventRepository
 
 
 def _schedule() -> ScheduleConfig:
@@ -50,7 +52,8 @@ def test_new_job_starts_at_first_cycle_slot_without_catchup(tmp_path: Path) -> N
 
 
 def test_startup_records_missed_fires_without_enqueuing(tmp_path: Path) -> None:
-    store, _, connection = _store(tmp_path / "manager.sqlite3")
+    _, operations, connection = _store(tmp_path / "manager.sqlite3")
+    store = ScheduleStore(connection, operations, SchedulerEventRepository(connection))
     schedule = _schedule()
     stored_fire = datetime(2026, 8, 27, tzinfo=UTC)
     try:
@@ -68,6 +71,9 @@ def test_startup_records_missed_fires_without_enqueuing(tmp_path: Path) -> None:
         assert result.missed_at == (stored_fire, stored_fire + timedelta(days=1))
         assert result.phase.operation == "backup"
         assert connection.execute("SELECT count(*) FROM operations").fetchone() == (0,)
+        assert connection.execute(
+            "SELECT event_type, operation_kind FROM scheduler_events"
+        ).fetchall() == [("schedule_missed", "backup"), ("schedule_missed", "backup")]
     finally:
         connection.close()
 
@@ -162,5 +168,71 @@ def test_failed_enqueue_does_not_advance_schedule_state(tmp_path: Path) -> None:
         ).fetchone()
         assert after == before
         assert connection.execute("SELECT count(*) FROM operations").fetchone() == (0,)
+    finally:
+        connection.close()
+
+
+def test_coalesced_trigger_records_reason_without_overlap_alert(tmp_path: Path) -> None:
+    _, operations, connection = _store(tmp_path / "manager.sqlite3")
+    events = SchedulerEventRepository(connection)
+    store = ScheduleStore(connection, operations, events)
+    schedule = _schedule()
+    due = datetime(2026, 8, 28, tzinfo=UTC)
+    try:
+        store.initialize_new_job("data", schedule, now=datetime(2026, 8, 27, 12, tzinfo=UTC))
+        operations.enqueue(
+            deduplication_key="manual:existing",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+            queued_at=due,
+        )
+        result = store.poll("data", schedule, now=due, poll_seconds=5)
+        assert result.enqueue_result is not None
+        assert result.enqueue_result.disposition is EnqueueDisposition.COALESCED
+        assert connection.execute("SELECT event_type, reason FROM scheduler_events").fetchone() == (
+            "duplicate_trigger_skipped",
+            "already_queued",
+        )
+        assert connection.execute("SELECT count(*) FROM notifications").fetchone() == (0,)
+    finally:
+        connection.close()
+
+
+def test_new_scheduled_work_behind_other_run_creates_one_overlap_alert(
+    tmp_path: Path,
+) -> None:
+    _, operations, connection = _store(tmp_path / "manager.sqlite3")
+    events = SchedulerEventRepository(connection)
+    notifications = NotificationRepository(connection)
+    store = ScheduleStore(connection, operations, events, notifications)
+    schedule = _schedule()
+    due = datetime(2026, 8, 28, tzinfo=UTC)
+    try:
+        operations.upsert_job(
+            job_id="photos", display_name="Photos", enabled=True, config_valid=True
+        )
+        operations.enqueue(
+            deduplication_key="photos:running",
+            job_id="photos",
+            kind="backup",
+            trigger_source="scheduled",
+            queued_at=due - timedelta(hours=1),
+        )
+        running = operations.claim_next(started_at=due - timedelta(minutes=30))
+        assert running is not None
+        operations.update_stage(running.run_id, "backup", changed_at=due - timedelta(minutes=20))
+        store.initialize_new_job("data", schedule, now=datetime(2026, 8, 27, 12, tzinfo=UTC))
+
+        result = store.poll("data", schedule, now=due, poll_seconds=5)
+
+        assert result.enqueue_result is not None
+        assert result.enqueue_result.disposition is EnqueueDisposition.CREATED
+        assert connection.execute("SELECT event_type FROM scheduler_events").fetchall() == [
+            ("schedule_overlap",)
+        ]
+        assert connection.execute("SELECT kind FROM notifications").fetchall() == [
+            ("schedule_overlap",)
+        ]
     finally:
         connection.close()

@@ -38,6 +38,31 @@ def render_notification(notification: PendingNotification) -> str:
                 f"Severity: {_text(payload, 'severity')}",
             )
         )
+    if notification.kind == "schedule_overlap":
+        return "\n".join(
+            (
+                "Scheduled jobs overlap",
+                f"Running: {_text(payload, 'running_job')}",
+                f"Stage: {_text(payload, 'running_stage', fallback='unknown')}",
+                f"Elapsed: {_duration(payload, 'running_elapsed_seconds')}",
+                f"Queued: {_text(payload, 'queued_job')}",
+            )
+        )
+    if notification.kind == "run_failed":
+        return "\n".join(
+            (
+                f"Operation failed: {_text(payload, 'job')}",
+                f"Result: {_text(payload, 'result')}",
+                f"Exit code: {_text(payload, 'exit_code')}",
+            )
+        )
+    if notification.kind == "disk_offline_unconfirmed":
+        return "\n".join(
+            (
+                f"Backup disk state is unsafe: {_text(payload, 'job')}",
+                "Return to offline was not confirmed",
+            )
+        )
     raise ValueError(f"unsupported notification kind: {notification.kind}")
 
 
@@ -55,6 +80,7 @@ def _daily(payload: dict[str, Any]) -> str:
 
 def _startup(payload: dict[str, Any]) -> str:
     interrupted = _string_list(payload.get("interrupted"))
+    disk_issues = _string_list(payload.get("disk_issues"))
     backups = _string_list(payload.get("missed_backups"))
     checks = _string_list(payload.get("missed_checks"))
     other_count = payload.get("missed_other_count", 0)
@@ -63,11 +89,12 @@ def _startup(payload: dict[str, Any]) -> str:
         f"Manager downtime: {_duration(payload, 'downtime_seconds')}",
     ]
     lines.extend(f"Interrupted: {item}" for item in interrupted)
+    lines.extend(f"Disk state: {item}" for item in disk_issues)
     lines.extend(f"Missed backup: {item}" for item in backups)
     lines.extend(f"Missed check: {item}" for item in checks)
     if isinstance(other_count, int) and other_count > 0:
         lines.append(f"Missed maintenance operations: {other_count}")
-    if not interrupted and not backups and not checks and not other_count:
+    if not interrupted and not disk_issues and not backups and not checks and not other_count:
         lines.append("No important operations were missed")
     return "\n".join(lines)
 

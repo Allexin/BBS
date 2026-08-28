@@ -62,3 +62,30 @@ def test_deadline_and_smart_messages_are_bounded_structured_text() -> None:
 def test_unknown_notification_kind_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported"):
         render_notification(_notification("unknown", {}))
+
+
+def test_overlap_message_names_running_and_queued_jobs() -> None:
+    text = render_notification(
+        _notification(
+            "schedule_overlap",
+            {
+                "running_job": "Photos",
+                "running_stage": "backup",
+                "running_elapsed_seconds": 600,
+                "queued_job": "Data",
+            },
+        )
+    )
+    assert "Running: Photos" in text
+    assert "Elapsed: 10m 0s" in text
+    assert "Queued: Data" in text
+
+
+def test_failure_message_contains_only_operational_summary() -> None:
+    text = render_notification(
+        _notification(
+            "run_failed",
+            {"job": "Data", "result": "failed", "exit_code": 10},
+        )
+    )
+    assert text == "Operation failed: Data\nResult: failed\nExit code: 10"

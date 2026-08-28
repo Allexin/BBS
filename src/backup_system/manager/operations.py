@@ -11,6 +11,7 @@ from uuid import UUID
 
 from backup_system.common.ids import new_operation_id, new_run_id
 from backup_system.common.time import require_aware, utc_now
+from backup_system.manager.notifications import NotificationRepository
 
 
 class OperationState(StrEnum):
@@ -51,6 +52,7 @@ class RemoveDisposition(StrEnum):
 class EnqueueResult:
     operation_id: UUID
     disposition: EnqueueDisposition
+    existing_state: OperationState | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -73,8 +75,13 @@ class StateTransitionError(RuntimeError):
 
 
 class OperationsRepository:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        notifications: NotificationRepository | None = None,
+    ) -> None:
         self._connection = connection
+        self._notifications = notifications
 
     def upsert_job(
         self,
@@ -180,12 +187,16 @@ class OperationsRepository:
             if duplicate is not None:
                 return EnqueueResult(UUID(str(duplicate[0])), EnqueueDisposition.DEDUPLICATED)
             unfinished = self._connection.execute(
-                """SELECT operation_id FROM operations
+                """SELECT operation_id, state FROM operations
                 WHERE job_id = ? AND kind = ? AND state IN ('queued', 'running')""",
                 (job_id, kind),
             ).fetchone()
             if unfinished is not None:
-                return EnqueueResult(UUID(str(unfinished[0])), EnqueueDisposition.COALESCED)
+                return EnqueueResult(
+                    UUID(str(unfinished[0])),
+                    EnqueueDisposition.COALESCED,
+                    OperationState(str(unfinished[1])),
+                )
             raise
         return EnqueueResult(operation_id, EnqueueDisposition.CREATED)
 
@@ -383,6 +394,33 @@ class OperationsRepository:
                     "timestamp": timestamp,
                 },
             )
+            if self._notifications is not None:
+                display_row = self._connection.execute(
+                    """SELECT display_name FROM jobs WHERE job_id =
+                    (SELECT job_id FROM runs WHERE run_id = ?)""",
+                    (str(run_id),),
+                ).fetchone()
+                display_name = str(display_row[0]) if display_row else "unknown"
+                if result is RunResult.FAILED:
+                    self._notifications.enqueue_in_transaction(
+                        deduplication_key=f"run:{run_id}:failed",
+                        run_id=run_id,
+                        kind="run_failed",
+                        payload={
+                            "job": display_name,
+                            "result": result,
+                            "exit_code": exit_code,
+                        },
+                        created_at=completed_time,
+                    )
+                if not disk_offline_confirmed:
+                    self._notifications.enqueue_in_transaction(
+                        deduplication_key=f"run:{run_id}:disk-offline-unconfirmed",
+                        run_id=run_id,
+                        kind="disk_offline_unconfirmed",
+                        payload={"job": display_name},
+                        created_at=completed_time,
+                    )
 
     def reconcile_startup(self, *, reconciled_at: datetime | None = None) -> StartupReconciliation:
         timestamp = require_aware(reconciled_at or utc_now()).isoformat()

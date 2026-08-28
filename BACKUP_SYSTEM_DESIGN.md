@@ -2613,6 +2613,19 @@ CREATE TABLE daily_report_state (
     updated_at TEXT NOT NULL
 );
 
+CREATE TABLE scheduler_events (
+    event_id TEXT PRIMARY KEY,
+    deduplication_key TEXT NOT NULL UNIQUE,
+    event_type TEXT NOT NULL,
+    job_id TEXT NOT NULL REFERENCES jobs(job_id),
+    operation_kind TEXT NOT NULL,
+    scheduled_at TEXT NOT NULL,
+    reason TEXT,
+    payload_json TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    startup_reported_at TEXT
+);
+
 CREATE TABLE physical_disks (
     disk_id TEXT PRIMARY KEY,
     public_disk_id TEXT NOT NULL UNIQUE,

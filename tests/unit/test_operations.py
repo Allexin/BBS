@@ -6,6 +6,7 @@ from uuid import uuid4
 import pytest
 
 from backup_system.manager.database import open_manager_database
+from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import (
     EnqueueDisposition,
     OperationsRepository,
@@ -46,7 +47,39 @@ def test_enqueue_is_idempotent_and_coalesces_unfinished_work(tmp_path: Path) -> 
         )
         assert first.disposition is EnqueueDisposition.CREATED
         assert duplicate == type(duplicate)(first.operation_id, EnqueueDisposition.DEDUPLICATED)
-        assert overlap == type(overlap)(first.operation_id, EnqueueDisposition.COALESCED)
+        assert overlap == type(overlap)(
+            first.operation_id,
+            EnqueueDisposition.COALESCED,
+            OperationState.QUEUED,
+        )
+    finally:
+        connection.close()
+
+
+def test_failed_run_and_unconfirmed_offline_queue_immediate_alerts(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    notifications = NotificationRepository(connection)
+    repository = OperationsRepository(connection, notifications)
+    repository.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+    try:
+        repository.enqueue(
+            deduplication_key="manual:failed",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+        )
+        run = repository.claim_next()
+        assert run is not None
+        repository.finish_run(
+            run.run_id,
+            result=RunResult.FAILED,
+            exit_code=10,
+            disk_offline_confirmed=False,
+        )
+        assert connection.execute("SELECT kind FROM notifications ORDER BY rowid").fetchall() == [
+            ("run_failed",),
+            ("disk_offline_unconfirmed",),
+        ]
     finally:
         connection.close()
 

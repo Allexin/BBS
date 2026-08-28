@@ -9,7 +9,13 @@ from typing import Any, cast
 
 from backup_system.common.config import CycleItem, ScheduleConfig
 from backup_system.common.time import require_aware
-from backup_system.manager.operations import EnqueueResult, OperationsRepository
+from backup_system.manager.notifications import NotificationRepository
+from backup_system.manager.operations import (
+    EnqueueDisposition,
+    EnqueueResult,
+    OperationsRepository,
+    OperationState,
+)
 from backup_system.manager.scheduler import (
     CronEvaluation,
     ScheduleCursor,
@@ -21,6 +27,7 @@ from backup_system.manager.scheduler import (
     next_cron_fire,
     phase_for,
 )
+from backup_system.manager.scheduler_events import SchedulerEventRepository
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,9 +46,17 @@ class PollScheduleResult:
 
 
 class ScheduleStore:
-    def __init__(self, connection: sqlite3.Connection, operations: OperationsRepository) -> None:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        operations: OperationsRepository,
+        events: SchedulerEventRepository | None = None,
+        notifications: NotificationRepository | None = None,
+    ) -> None:
         self._connection = connection
         self._operations = operations
+        self._events = events
+        self._notifications = notifications
 
     def initialize_new_job(self, job_id: str, schedule: ScheduleConfig, *, now: datetime) -> None:
         timestamp = require_aware(now)
@@ -90,6 +105,13 @@ class ScheduleStore:
                 stored_next_fire=datetime.fromisoformat(str(row[2])),
                 now=timestamp,
             )
+            self._record_missed(
+                job_id,
+                phase_for(schedule, cursor),
+                evaluation,
+                timestamp,
+                reason="manager_downtime",
+            )
             self._connection.execute(
                 """UPDATE schedule_state SET
                     last_evaluated_at = ?, next_fire_at = ?, updated_at = ?
@@ -124,6 +146,7 @@ class ScheduleStore:
                 now=timestamp,
                 poll_seconds=poll_seconds,
             )
+            self._record_missed(job_id, phase, evaluation, timestamp, reason="poll_late")
             enqueue_result = None
             if evaluation.due_at is not None:
                 enqueue_result = self._operations.enqueue_in_transaction(
@@ -134,6 +157,9 @@ class ScheduleStore:
                     trigger_source="scheduled",
                     scheduled_at=evaluation.due_at,
                     queued_at=timestamp,
+                )
+                self._record_trigger_outcome(
+                    job_id, phase, evaluation.due_at, enqueue_result, timestamp
                 )
             self._connection.execute(
                 """UPDATE schedule_state SET
@@ -183,6 +209,92 @@ class ScheduleStore:
                 ),
             )
         return updated
+
+    def _record_missed(
+        self,
+        job_id: str,
+        phase: CycleItem,
+        evaluation: CronEvaluation,
+        created_at: datetime,
+        reason: str,
+    ) -> None:
+        if self._events is None:
+            return
+        for missed_at in evaluation.missed_at:
+            self._events.append_in_transaction(
+                deduplication_key=f"schedule-missed:{job_id}:{missed_at.isoformat()}",
+                event_type="schedule_missed",
+                job_id=job_id,
+                operation_kind=phase.operation,
+                scheduled_at=missed_at,
+                reason=reason,
+                payload={"mode": phase.mode},
+                created_at=created_at,
+            )
+
+    def _record_trigger_outcome(
+        self,
+        job_id: str,
+        phase: CycleItem,
+        scheduled_at: datetime,
+        result: EnqueueResult,
+        created_at: datetime,
+    ) -> None:
+        if result.disposition is EnqueueDisposition.COALESCED and self._events is not None:
+            reason = (
+                "already_running"
+                if result.existing_state is OperationState.RUNNING
+                else "already_queued"
+            )
+            self._events.append_in_transaction(
+                deduplication_key=f"duplicate-trigger:{job_id}:{scheduled_at.isoformat()}",
+                event_type="duplicate_trigger_skipped",
+                job_id=job_id,
+                operation_kind=phase.operation,
+                scheduled_at=scheduled_at,
+                reason=reason,
+                created_at=created_at,
+            )
+            return
+        if result.disposition is not EnqueueDisposition.CREATED:
+            return
+        running = self._connection.execute(
+            """SELECT runs.run_id, runs.job_id, jobs.display_name, runs.stage,
+                runs.started_at FROM runs JOIN jobs ON jobs.job_id = runs.job_id
+            WHERE runs.state = 'running' LIMIT 1"""
+        ).fetchone()
+        if running is None or str(running[1]) == job_id:
+            return
+        queued_name_row = self._connection.execute(
+            "SELECT display_name FROM jobs WHERE job_id = ?", (job_id,)
+        ).fetchone()
+        queued_name = str(queued_name_row[0]) if queued_name_row else job_id
+        elapsed = max(
+            0,
+            int((created_at - datetime.fromisoformat(str(running[4]))).total_seconds()),
+        )
+        if self._events is not None:
+            self._events.append_in_transaction(
+                deduplication_key=f"overlap:{job_id}:{scheduled_at.isoformat()}",
+                event_type="schedule_overlap",
+                job_id=job_id,
+                operation_kind=phase.operation,
+                scheduled_at=scheduled_at,
+                payload={"running_run_id": str(running[0])},
+                created_at=created_at,
+            )
+        if self._notifications is not None:
+            self._notifications.enqueue_in_transaction(
+                deduplication_key=f"overlap:{job_id}:{scheduled_at.isoformat()}",
+                kind="schedule_overlap",
+                payload={
+                    "running_job": str(running[2]),
+                    "running_stage": str(running[3]) if running[3] is not None else None,
+                    "running_elapsed_seconds": elapsed,
+                    "queued_job": queued_name,
+                },
+                created_at=created_at,
+            )
 
     def _required_state(self, job_id: str) -> tuple[Any, ...]:
         row = self._connection.execute(
