@@ -45,13 +45,29 @@ class SnapshotCreated(EventBase):
     bytes_added: int = Field(ge=0)
 
 
+class DiskOfflineConfirmed(EventBase):
+    event: Literal["disk_offline_confirmed"]
+
+
+class DiskOfflineFailed(EventBase):
+    event: Literal["disk_offline_failed"]
+
+
 class RunFinished(EventBase):
     event: Literal["run_finished"]
     result: Literal["success", "warning", "failed", "cancelled", "interrupted"]
+    exit_code: int | None = Field(default=None, ge=0)
+    disk_offline_confirmed: bool | None = None
 
 
 KnownExecutorEvent = Annotated[
-    RunStarted | StageChanged | Progress | SnapshotCreated | RunFinished,
+    RunStarted
+    | StageChanged
+    | Progress
+    | SnapshotCreated
+    | DiskOfflineConfirmed
+    | DiskOfflineFailed
+    | RunFinished,
     Field(discriminator="event"),
 ]
 _EVENT_ADAPTER: TypeAdapter[KnownExecutorEvent] = TypeAdapter(KnownExecutorEvent)
@@ -68,7 +84,15 @@ class UnknownExecutorEvent(BaseModel):
 
 
 def parse_executor_event(value: dict[str, Any]) -> KnownExecutorEvent | UnknownExecutorEvent:
-    known_names = {"run_started", "stage_changed", "progress", "snapshot_created", "run_finished"}
+    known_names = {
+        "run_started",
+        "stage_changed",
+        "progress",
+        "snapshot_created",
+        "disk_offline_confirmed",
+        "disk_offline_failed",
+        "run_finished",
+    }
     if value.get("event") not in known_names:
         return UnknownExecutorEvent.model_validate(value)
     return _EVENT_ADAPTER.validate_python(value)
