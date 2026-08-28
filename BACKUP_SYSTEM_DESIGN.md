@@ -1550,6 +1550,7 @@ disk:
   expected_size_bytes: 4000787030016
   partition_guid: '<guid>'
   volume_guid: '<guid>'
+  mount_point: 'C:\BackupVolumes\primary'
   repository_path_timeout_seconds: 30
 
 backup:
@@ -1590,6 +1591,7 @@ disk:
   expected_size_bytes: 4000787030016
   partition_guid: '<guid>'
   volume_guid: '<guid>'
+  mount_point: 'C:\BackupVolumes\primary'
   repository_path_timeout_seconds: 30
 verification:
   restore_test_paths:
@@ -1620,6 +1622,7 @@ disk:
   expected_size_bytes: 4000787030016
   partition_guid: '<same-guid-as-owner>'
   volume_guid: '<same-guid-as-owner>'
+  mount_point: 'C:\BackupVolumes\primary'
   repository_path_timeout_seconds: 30
 ```
 

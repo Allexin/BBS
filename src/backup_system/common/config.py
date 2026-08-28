@@ -163,7 +163,10 @@ class DiskConfig(StrictModel):
     expected_size_bytes: int = Field(gt=0)
     partition_guid: str = Field(min_length=1)
     volume_guid: str = Field(min_length=1)
+    mount_point: str
     repository_path_timeout_seconds: int = Field(gt=0)
+
+    _absolute_mount_point = field_validator("mount_point")(_validate_absolute_windows_path)
 
 
 class SnapshotBackupConfig(StrictModel):

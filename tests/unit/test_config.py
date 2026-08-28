@@ -18,6 +18,7 @@ def _disk() -> dict[str, object]:
         "expected_size_bytes": 1_000_000,
         "partition_guid": "partition-guid",
         "volume_guid": "volume-guid",
+        "mount_point": r"C:\BackupVolumes\primary",
         "repository_path_timeout_seconds": 30,
     }
 

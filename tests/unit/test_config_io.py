@@ -30,6 +30,7 @@ disk:
   expected_size_bytes: 1000000
   partition_guid: partition-guid
   volume_guid: volume-guid
+  mount_point: 'C:\\BackupVolumes\\primary'
   repository_path_timeout_seconds: 30
 """
 
