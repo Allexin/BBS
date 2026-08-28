@@ -47,3 +47,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_prefl
 Скрипт не меняет состояние дисков и сохраняет JSON в игнорируемый файл
 `.poc-work/stage0/admin-preflight.json`. После запуска файл можно исследовать прямо в
 рабочей папке; копировать stdout не требуется.
+
+После выбора пустого тестового диска elevated PowerShell должен установить guard из
+локального preflight и запустить hardware-сценарий. Пример для `D:`:
+
+```powershell
+$preflight = Get-Content .\.poc-work\stage0\admin-preflight.json -Raw | ConvertFrom-Json
+$env:BACKUP_SYSTEM_HARDWARE_TEST_DISK_ID = ($preflight.disks | Where-Object { @($_.partitions.drive_letter) -contains 'D' }).unique_id
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_hardware_test.ps1 -TestDrive D
+```
+
+Сценарий повторно сверяет disk number, UniqueId и букву тома, запрещает boot/system
+disk, очищает только `D:\bbs-stage0-poc`, проверяет restic через VSS с эксклюзивно
+открытым файлом, check/restore/хеши и отсутствие VSS orphan, затем выполняет цикл
+offline/online. Результат сохраняется в
+`.poc-work/stage0/admin-hardware-result.json`.
