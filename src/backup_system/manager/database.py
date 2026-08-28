@@ -7,7 +7,7 @@ from pathlib import Path
 
 from backup_system.common.time import utc_now
 
-LATEST_SCHEMA_VERSION = 5
+LATEST_SCHEMA_VERSION = 6
 
 _SCHEMA_V1 = """
 CREATE TABLE jobs (
@@ -222,6 +222,12 @@ CREATE TABLE scheduler_events (
 );
 """
 
+_SCHEMA_V6 = """
+ALTER TABLE runs ADD COLUMN restore_result_path TEXT;
+ALTER TABLE runs ADD COLUMN restored_logical_bytes INTEGER;
+ALTER TABLE runs ADD COLUMN restored_files INTEGER;
+"""
+
 
 class SchemaVersionError(RuntimeError):
     """The database schema is newer than this application understands."""
@@ -289,6 +295,12 @@ def _migrate(connection: sqlite3.Connection) -> None:
             connection.execute(
                 "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (5, utc_now().isoformat()),
+            )
+        if 6 not in versions:
+            _execute_script_atomically(connection, _SCHEMA_V6)
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (6, utc_now().isoformat()),
             )
 
 

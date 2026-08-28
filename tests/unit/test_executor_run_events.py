@@ -7,6 +7,8 @@ from backup_system.common.events import (
     DiskOfflineConfirmed,
     DiskOfflineFailed,
     Progress,
+    RestoreCompleted,
+    RestoreTargetReady,
     RunFinished,
     RunStarted,
     SnapshotCreated,
@@ -106,5 +108,49 @@ def test_conflicting_offline_events_are_rejected(tmp_path: Path) -> None:
         processor.process(DiskOfflineFailed(event="disk_offline_failed", timestamp=now))
         with pytest.raises(ValueError, match="conflicting"):
             processor.process(DiskOfflineConfirmed(event="disk_offline_confirmed", timestamp=now))
+    finally:
+        connection.close()
+
+
+def test_restore_events_persist_incomplete_path_and_verified_metrics(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    operations = OperationsRepository(connection)
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+    operations.enqueue(
+        deduplication_key="manual:restore",
+        job_id="data",
+        kind="restore",
+        trigger_source="manual",
+        request={"version": "a" * 64},
+    )
+    run = operations.claim_next()
+    assert run is not None
+    processor = ExecutorRunEventProcessor(
+        run_id=run.run_id,
+        job_id=run.job_id,
+        operations=operations,
+        smart=ExecutorEventIngestor(SmartHistoryRepository(connection)),
+    )
+    now = datetime.now(UTC)
+    try:
+        processor.process(
+            RestoreTargetReady(
+                event="restore_target_ready",
+                timestamp=now,
+                result_path=r"D:\Restores\BackupRestore-data",
+            )
+        )
+        processor.process(
+            RestoreCompleted(
+                event="restore_completed",
+                timestamp=now,
+                result_path=r"D:\Restores\BackupRestore-data",
+                files_restored=2,
+                logical_bytes=10,
+            )
+        )
+        assert connection.execute(
+            "SELECT restore_result_path, restored_files, restored_logical_bytes FROM runs"
+        ).fetchone() == (r"D:\Restores\BackupRestore-data", 2, 10)
     finally:
         connection.close()

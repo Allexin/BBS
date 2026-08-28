@@ -63,6 +63,7 @@ class ClaimedRun:
     job_id: str
     kind: str
     mode: str | None
+    request: dict[str, object] | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,7 +121,7 @@ class OperationsRepository:
         kind: str,
         trigger_source: str,
         mode: str | None = None,
-        request: dict[str, str] | None = None,
+        request: dict[str, object] | None = None,
         scheduled_at: datetime | None = None,
         queued_at: datetime | None = None,
     ) -> EnqueueResult:
@@ -144,7 +145,7 @@ class OperationsRepository:
         kind: str,
         trigger_source: str,
         mode: str | None = None,
-        request: dict[str, str] | None = None,
+        request: dict[str, object] | None = None,
         scheduled_at: datetime | None = None,
         queued_at: datetime | None = None,
     ) -> EnqueueResult:
@@ -215,13 +216,15 @@ class OperationsRepository:
             latch = SafetyLatchRepository(self._connection).active()
             if latch is None:
                 row = self._connection.execute(
-                    """SELECT operation_id, job_id, kind, mode
-                    FROM operations WHERE state = ? ORDER BY queued_at, rowid LIMIT 1""",
+                    """SELECT operation_id, job_id, kind, mode, request_json
+                    FROM operations WHERE state = ?
+                    ORDER BY CASE trigger_source WHEN 'manual' THEN 0 ELSE 1 END,
+                             queued_at, rowid LIMIT 1""",
                     (OperationState.QUEUED,),
                 ).fetchone()
             else:
                 row = self._connection.execute(
-                    """SELECT operation_id, job_id, kind, mode FROM operations
+                    """SELECT operation_id, job_id, kind, mode, request_json FROM operations
                     WHERE state = ? AND job_id = ? AND kind = 'recover'
                         AND trigger_source = 'manual'
                     ORDER BY queued_at, rowid LIMIT 1""",
@@ -234,6 +237,7 @@ class OperationsRepository:
             job_id = str(row[1])
             kind = str(row[2])
             mode = str(row[3]) if row[3] is not None else None
+            request = json.loads(str(row[4])) if row[4] is not None else None
             cursor = self._connection.execute(
                 "UPDATE operations SET state = ? WHERE operation_id = ? AND state = ?",
                 (OperationState.RUNNING, str(operation_id), OperationState.QUEUED),
@@ -269,7 +273,7 @@ class OperationsRepository:
         except BaseException:
             self._connection.rollback()
             raise
-        return ClaimedRun(run_id, operation_id, job_id, kind, mode)
+        return ClaimedRun(run_id, operation_id, job_id, kind, mode, request)
 
     def update_stage(self, run_id: UUID, stage: str, *, changed_at: datetime | None = None) -> None:
         if not stage:
@@ -332,6 +336,44 @@ class OperationsRepository:
             if cursor.rowcount != 1:
                 raise StateTransitionError("progress can be changed only for a running run")
 
+    def set_restore_target(self, run_id: UUID, result_path: str) -> None:
+        if not result_path:
+            raise ValueError("restore result path must not be empty")
+        with self._connection:
+            cursor = self._connection.execute(
+                """UPDATE runs SET restore_result_path = ?
+                WHERE run_id = ? AND state = ? AND kind IN ('restore', 'restore-test')""",
+                (result_path, str(run_id), RunState.RUNNING),
+            )
+            if cursor.rowcount != 1:
+                raise StateTransitionError("restore target belongs to no running restore")
+
+    def complete_restore_metrics(
+        self,
+        run_id: UUID,
+        *,
+        result_path: str,
+        files_restored: int,
+        logical_bytes: int,
+    ) -> None:
+        if files_restored < 0 or logical_bytes < 0:
+            raise ValueError("restore metrics cannot be negative")
+        with self._connection:
+            cursor = self._connection.execute(
+                """UPDATE runs SET restore_result_path = ?, restored_files = ?,
+                    restored_logical_bytes = ?
+                WHERE run_id = ? AND state = ? AND kind IN ('restore', 'restore-test')""",
+                (
+                    result_path,
+                    files_restored,
+                    logical_bytes,
+                    str(run_id),
+                    RunState.RUNNING,
+                ),
+            )
+            if cursor.rowcount != 1:
+                raise StateTransitionError("restore metrics belong to no running restore")
+
     def finish_run(
         self,
         run_id: UUID,
@@ -349,7 +391,8 @@ class OperationsRepository:
         with self._connection:
             row = self._connection.execute(
                 """SELECT runs.operation_id, runs.deadline_at, runs.deadline_exceeded_at,
-                    runs.job_id, operations.kind, operations.trigger_source
+                    runs.job_id, operations.kind, operations.trigger_source,
+                    operations.request_json, runs.restore_result_path, runs.stage
                 FROM runs JOIN operations ON operations.operation_id = runs.operation_id
                 WHERE runs.run_id = ? AND runs.state = ?""",
                 (str(run_id), RunState.RUNNING),
@@ -422,15 +465,23 @@ class OperationsRepository:
                 ).fetchone()
                 display_name = str(display_row[0]) if display_row else "unknown"
                 if result is RunResult.FAILED:
+                    payload: dict[str, object] = {
+                        "job": display_name,
+                        "result": result,
+                        "exit_code": exit_code,
+                    }
+                    if str(row[4]) in {"restore", "restore-test"}:
+                        request = json.loads(str(row[6])) if row[6] is not None else {}
+                        payload.update(
+                            version=request.get("version"),
+                            stage=str(row[8]) if row[8] is not None else None,
+                            result_path=str(row[7]) if row[7] is not None else None,
+                        )
                     self._notifications.enqueue_in_transaction(
                         deduplication_key=f"run:{run_id}:failed",
                         run_id=run_id,
                         kind="run_failed",
-                        payload={
-                            "job": display_name,
-                            "result": result,
-                            "exit_code": exit_code,
-                        },
+                        payload=payload,
                         created_at=completed_time,
                     )
                 if not disk_offline_confirmed:

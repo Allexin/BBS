@@ -336,3 +336,48 @@ def test_service_stop_discards_only_queued_tail(tmp_path: Path) -> None:
         assert states[str(queued.operation_id)] == OperationState.DISCARDED_ON_SERVICE_STOP
     finally:
         connection.close()
+
+
+def test_manual_restore_is_claimed_before_scheduled_tail_fifo(tmp_path: Path) -> None:
+    repository, connection = _repository(tmp_path / "manager.sqlite3")
+    try:
+        scheduled = repository.enqueue(
+            deduplication_key="scheduled:first",
+            job_id="data",
+            kind="backup",
+            trigger_source="scheduled",
+        )
+        first_manual = repository.enqueue(
+            deduplication_key="manual:first",
+            job_id="data",
+            kind="restore",
+            trigger_source="manual",
+            request={"version": "a" * 64},
+        )
+        second_manual = repository.enqueue(
+            deduplication_key="manual:second",
+            job_id="data",
+            kind="check",
+            trigger_source="manual",
+            mode="full",
+        )
+        first = repository.claim_next()
+        assert first is not None and first.operation_id == first_manual.operation_id
+        repository.finish_run(
+            first.run_id,
+            result=RunResult.SUCCESS,
+            exit_code=0,
+            disk_offline_confirmed=True,
+        )
+        second = repository.claim_next()
+        assert second is not None and second.operation_id == second_manual.operation_id
+        repository.finish_run(
+            second.run_id,
+            result=RunResult.SUCCESS,
+            exit_code=0,
+            disk_offline_confirmed=True,
+        )
+        third = repository.claim_next()
+        assert third is not None and third.operation_id == scheduled.operation_id
+    finally:
+        connection.close()

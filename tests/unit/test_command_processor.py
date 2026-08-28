@@ -114,3 +114,33 @@ def test_remove_and_cancel_commands_dispatch_to_typed_handlers(tmp_path: Path) -
         assert cancelled == [True]
     finally:
         connection.close()
+
+
+def test_restore_latest_is_resolved_before_enqueue(tmp_path: Path) -> None:
+    layout, operations, connection = _runtime(tmp_path)
+    try:
+        command = RunCommand(
+            command_id=uuid4(),
+            created_at=datetime.now(UTC),
+            kind="run",
+            job_id="data",
+            operation="restore",
+            version="latest",
+            path=".",
+            target=r"D:\Restores",
+        )
+        publish_command(layout.root, command)
+        spool = CommandSpool(layout)
+        spool.accept_incoming()
+        CommandProcessor(
+            spool,
+            operations,
+            cancel_current=lambda: None,
+            resolve_restore_version=lambda job_id, version: "a" * 64,
+        ).process_accepted()
+        request = connection.execute("SELECT request_json FROM operations").fetchone()[0]
+        assert '"version":"' + "a" * 64 + '"' in request
+        assert '"request_id"' in request
+        assert '"version":"latest"' not in request
+    finally:
+        connection.close()

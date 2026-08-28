@@ -9,6 +9,8 @@ from backup_system.common.events import (
     DiskOfflineFailed,
     KnownExecutorEvent,
     Progress,
+    RestoreCompleted,
+    RestoreTargetReady,
     RunFinished,
     RunStarted,
     SmartObserved,
@@ -79,6 +81,17 @@ class ExecutorRunEventProcessor:
         if isinstance(event, SnapshotCreated):
             self._snapshot_id = event.snapshot_id
             self._bytes_added = event.bytes_added
+            return None
+        if isinstance(event, RestoreTargetReady):
+            self._operations.set_restore_target(self._run_id, event.result_path)
+            return None
+        if isinstance(event, RestoreCompleted):
+            self._operations.complete_restore_metrics(
+                self._run_id,
+                result_path=event.result_path,
+                files_restored=event.files_restored,
+                logical_bytes=event.logical_bytes,
+            )
             return None
         if isinstance(event, SmartObserved):
             return self._smart.ingest(event)
