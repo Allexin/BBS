@@ -1,0 +1,315 @@
+"""Low-level IVssBackupComponents backend with durable-start lifecycle support."""
+
+from __future__ import annotations
+
+import ctypes
+import os
+from ctypes import wintypes
+from typing import Any, Protocol
+from uuid import UUID
+
+from backup_system.executor.vss import VssSnapshot
+from backup_system.executor.windows_vss import VssBackendError
+
+HRESULT = ctypes.c_long
+INFINITE = 0xFFFFFFFF
+VSS_BT_COPY = 5
+VSS_CTX_CLIENT_ACCESSIBLE = 0x0000001D
+VSS_OBJECT_SNAPSHOT_SET = 2
+VSS_E_OBJECT_NOT_FOUND = 0x80042308
+RPC_E_CHANGED_MODE = 0x80010106
+
+
+class _Guid(ctypes.Structure):
+    _fields_ = [
+        ("data1", wintypes.DWORD),
+        ("data2", wintypes.WORD),
+        ("data3", wintypes.WORD),
+        ("data4", ctypes.c_ubyte * 8),
+    ]
+
+
+class _SnapshotProperties(ctypes.Structure):
+    _fields_ = [
+        ("snapshot_id", _Guid),
+        ("snapshot_set_id", _Guid),
+        ("snapshots_count", wintypes.LONG),
+        ("snapshot_device_object", wintypes.LPWSTR),
+        ("original_volume_name", wintypes.LPWSTR),
+        ("originating_machine", wintypes.LPWSTR),
+        ("service_machine", wintypes.LPWSTR),
+        ("exposed_name", wintypes.LPWSTR),
+        ("exposed_path", wintypes.LPWSTR),
+        ("provider_id", _Guid),
+        ("snapshot_attributes", wintypes.LONG),
+        ("creation_timestamp", ctypes.c_longlong),
+        ("status", ctypes.c_int),
+    ]
+
+
+class NativeVssSession(Protocol):
+    def start_snapshot_set(self) -> UUID: ...
+
+    def complete_snapshot_set(self, snapshot_set_id: UUID, volume_name: str) -> VssSnapshot: ...
+
+    def delete_snapshot_set(self, snapshot_set_id: UUID) -> None: ...
+
+    def close(self) -> None: ...
+
+
+class NativeVssFactory(Protocol):
+    def create(self) -> NativeVssSession: ...
+
+
+class NativeVssBackend:
+    """PreparedVssBackend retaining one COM requestor across Start/Add/Do."""
+
+    def __init__(self, factory: NativeVssFactory | None = None) -> None:
+        self._factory = factory or CtypesVssFactory()
+        self._active: tuple[UUID, NativeVssSession] | None = None
+
+    def start_snapshot_set(self) -> UUID:
+        if self._active is not None:
+            raise VssBackendError("start while another set is active", 0x80042301)
+        session = self._factory.create()
+        try:
+            snapshot_set_id = session.start_snapshot_set()
+        except BaseException:
+            session.close()
+            raise
+        self._active = (snapshot_set_id, session)
+        return snapshot_set_id
+
+    def complete_snapshot_set(self, snapshot_set_id: UUID, volume_guid: str) -> VssSnapshot:
+        session = self._require_active(snapshot_set_id)
+        return session.complete_snapshot_set(snapshot_set_id, _volume_name(volume_guid))
+
+    def delete_snapshot_set(self, snapshot_set_id: UUID) -> None:
+        if self._active is not None:
+            session = self._require_active(snapshot_set_id)
+            try:
+                session.delete_snapshot_set(snapshot_set_id)
+            finally:
+                session.close()
+                self._active = None
+            return
+        session = self._factory.create()
+        try:
+            session.delete_snapshot_set(snapshot_set_id)
+        finally:
+            session.close()
+
+    def _require_active(self, snapshot_set_id: UUID) -> NativeVssSession:
+        if self._active is None or self._active[0] != snapshot_set_id:
+            raise VssBackendError("snapshot set is not owned by active requestor", 0x80042308)
+        return self._active[1]
+
+
+class CtypesVssFactory:
+    def __init__(self) -> None:
+        if os.name != "nt":
+            raise OSError("VSS is available only on Windows")
+        self._vssapi = ctypes.WinDLL("vssapi", use_last_error=True)
+        self._ole32 = ctypes.OleDLL("ole32")
+        self._ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
+        self._ole32.CoInitializeEx.restype = HRESULT
+        self._ole32.CoUninitialize.argtypes = []
+        self._ole32.CoUninitialize.restype = None
+        self._create = self._vssapi.CreateVssBackupComponentsInternal
+        self._create.argtypes = [ctypes.POINTER(ctypes.c_void_p)]
+        self._create.restype = HRESULT
+        self._free_properties = self._vssapi.VssFreeSnapshotPropertiesInternal
+        self._free_properties.argtypes = [ctypes.POINTER(_SnapshotProperties)]
+        self._free_properties.restype = None
+
+    def create(self) -> NativeVssSession:
+        result = self._ole32.CoInitializeEx(None, 0)
+        unsigned_result = _unsigned(result)
+        if _failed(result) and unsigned_result != RPC_E_CHANGED_MODE:
+            _raise_hresult("CoInitializeEx", result)
+        uninitialize = self._ole32.CoUninitialize if unsigned_result in {0, 1} else None
+        pointer = ctypes.c_void_p()
+        try:
+            _check("CreateVssBackupComponents", self._create(ctypes.byref(pointer)))
+        except BaseException:
+            if uninitialize is not None:
+                uninitialize()
+            raise
+        if not pointer.value:
+            if uninitialize is not None:
+                uninitialize()
+            raise VssBackendError("CreateVssBackupComponents returned null", 0x80004003)
+        return CtypesVssSession(pointer, self._free_properties, uninitialize)
+
+
+class CtypesVssSession:
+    def __init__(
+        self, pointer: ctypes.c_void_p, free_properties: Any, uninitialize: Any | None
+    ) -> None:
+        self._pointer = pointer
+        self._free_properties = free_properties
+        self._uninitialize = uninitialize
+        self._closed = False
+        try:
+            self._initialize()
+        except BaseException:
+            self.close()
+            raise
+
+    def start_snapshot_set(self) -> UUID:
+        identifier = _Guid()
+        self._invoke(36, "StartSnapshotSet", ctypes.POINTER(_Guid))(
+            self._pointer, ctypes.byref(identifier)
+        )
+        return _uuid(identifier)
+
+    def complete_snapshot_set(self, snapshot_set_id: UUID, volume_name: str) -> VssSnapshot:
+        snapshot_id = _Guid()
+        provider = _Guid()
+        self._invoke(
+            37,
+            "AddToSnapshotSet",
+            wintypes.LPCWSTR,
+            _Guid,
+            ctypes.POINTER(_Guid),
+        )(self._pointer, volume_name, provider, ctypes.byref(snapshot_id))
+        asynchronous = ctypes.c_void_p()
+        self._invoke(38, "DoSnapshotSet", ctypes.POINTER(ctypes.c_void_p))(
+            self._pointer, ctypes.byref(asynchronous)
+        )
+        _wait_async(asynchronous, "DoSnapshotSet")
+        properties = _SnapshotProperties()
+        properties_loaded = False
+        try:
+            self._invoke(42, "GetSnapshotProperties", _Guid, ctypes.POINTER(_SnapshotProperties))(
+                self._pointer, snapshot_id, ctypes.byref(properties)
+            )
+            properties_loaded = True
+            actual_set_id = _uuid(properties.snapshot_set_id)
+            if actual_set_id != snapshot_set_id:
+                raise VssBackendError("verify snapshot set", 0x8004230F)
+            original = str(properties.original_volume_name or "")
+            if _normalize_volume(original) != _normalize_volume(volume_name):
+                raise VssBackendError("verify source volume", 0x8004230F)
+            device = str(properties.snapshot_device_object or "")
+            if not device.startswith(r"\\?\GLOBALROOT\Device\HarddiskVolumeShadowCopy"):
+                raise VssBackendError("verify shadow device", 0x8004230F)
+            return VssSnapshot(actual_set_id, _uuid(snapshot_id), volume_name, device + "\\")
+        finally:
+            if properties_loaded:
+                self._free_properties(ctypes.byref(properties))
+
+    def delete_snapshot_set(self, snapshot_set_id: UUID) -> None:
+        deleted = wintypes.LONG()
+        nondeleted = _Guid()
+        delete = _raw_method(
+            self._pointer,
+            39,
+            HRESULT,
+            _Guid,
+            ctypes.c_int,
+            wintypes.BOOL,
+            ctypes.POINTER(wintypes.LONG),
+            ctypes.POINTER(_Guid),
+        )
+        result = delete(
+            self._pointer,
+            _guid(snapshot_set_id),
+            VSS_OBJECT_SNAPSHOT_SET,
+            True,
+            ctypes.byref(deleted),
+            ctypes.byref(nondeleted),
+        )
+        if _unsigned(result) != VSS_E_OBJECT_NOT_FOUND:
+            _check("DeleteSnapshots", result)
+
+    def close(self) -> None:
+        if not self._closed:
+            _raw_method(self._pointer, 2, ctypes.c_ulong)(self._pointer)
+            if self._uninitialize is not None:
+                self._uninitialize()
+            self._closed = True
+
+    def _initialize(self) -> None:
+        self._invoke(5, "InitializeForBackup", ctypes.c_void_p)(self._pointer, None)
+        self._invoke(
+            6,
+            "SetBackupState",
+            wintypes.BOOLEAN,
+            wintypes.BOOLEAN,
+            ctypes.c_int,
+            wintypes.BOOLEAN,
+        )(self._pointer, False, False, VSS_BT_COPY, False)
+        self._invoke(35, "SetContext", wintypes.LONG)(self._pointer, VSS_CTX_CLIENT_ACCESSIBLE)
+
+    def _invoke(self, index: int, operation: str, *arguments: Any) -> Any:
+        function = _raw_method(self._pointer, index, HRESULT, *arguments)
+
+        def checked(*values: object) -> None:
+            _check(operation, function(*values))
+
+        return checked
+
+
+def _raw_method(pointer: ctypes.c_void_p, index: int, result: Any, *arguments: Any) -> Any:
+    vtable = ctypes.cast(pointer, ctypes.POINTER(ctypes.POINTER(ctypes.c_void_p))).contents
+    address = vtable[index]
+    prototype = ctypes.WINFUNCTYPE(result, ctypes.c_void_p, *arguments)
+    return prototype(address)
+
+
+def _wait_async(pointer: ctypes.c_void_p, operation: str) -> None:
+    if not pointer.value:
+        raise VssBackendError(f"{operation} returned null async", 0x80004003)
+    try:
+        wait = _raw_method(pointer, 4, HRESULT, wintypes.DWORD)
+        _check(f"{operation}.Wait", wait(pointer, INFINITE))
+        status = HRESULT()
+        reserved = wintypes.LONG()
+        query = _raw_method(
+            pointer, 5, HRESULT, ctypes.POINTER(HRESULT), ctypes.POINTER(wintypes.LONG)
+        )
+        _check(
+            f"{operation}.QueryStatus", query(pointer, ctypes.byref(status), ctypes.byref(reserved))
+        )
+        _check(operation, status.value)
+    finally:
+        _raw_method(pointer, 2, ctypes.c_ulong)(pointer)
+
+
+def _guid(value: UUID) -> _Guid:
+    return _Guid.from_buffer_copy(value.bytes_le)
+
+
+def _uuid(value: _Guid) -> UUID:
+    return UUID(bytes_le=bytes(value))
+
+
+def _volume_name(value: str) -> str:
+    stripped = value.strip().rstrip("\\")
+    if stripped.casefold().startswith(r"\\?\volume{") and stripped.endswith("}"):
+        identifier = UUID(stripped[len(r"\\?\Volume{") : -1])
+    else:
+        identifier = UUID(stripped.strip("{}"))
+    return f"\\\\?\\Volume{{{identifier}}}\\"
+
+
+def _normalize_volume(value: str) -> str:
+    return value.strip().rstrip("\\").casefold()
+
+
+def _unsigned(value: int) -> int:
+    return value & 0xFFFFFFFF
+
+
+def _failed(value: int) -> bool:
+    return bool(_unsigned(value) & 0x80000000)
+
+
+def _check(operation: str, value: int) -> None:
+    if _failed(value):
+        _raise_hresult(operation, value)
+
+
+def _raise_hresult(operation: str, value: int) -> None:
+    raise VssBackendError(operation, _unsigned(value))
