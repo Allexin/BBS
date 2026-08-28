@@ -11,6 +11,7 @@ from enum import StrEnum
 from pydantic import BaseModel, ConfigDict, Field
 
 from backup_system.common.time import require_aware
+from backup_system.manager.notifications import NotificationRepository
 
 
 class SmartSeverity(StrEnum):
@@ -61,8 +62,13 @@ _COUNTER_RULES: tuple[tuple[str, SmartSeverity], ...] = (
 
 
 class SmartHistoryRepository:
-    def __init__(self, connection: sqlite3.Connection) -> None:
+    def __init__(
+        self,
+        connection: sqlite3.Connection,
+        notifications: NotificationRepository | None = None,
+    ) -> None:
         self._connection = connection
+        self._notifications = notifications
 
     def record(
         self,
@@ -143,6 +149,20 @@ class SmartHistoryRepository:
             if cursor.lastrowid is None:
                 raise RuntimeError("SQLite did not return an observation ID")
             observation_id = cursor.lastrowid
+            if self._notifications is not None:
+                for regression in regressions if collection_success else ():
+                    self._notifications.enqueue_in_transaction(
+                        deduplication_key=(f"smart:{observation_id}:{regression.rule_id}"),
+                        kind="smart_regression",
+                        payload={
+                            "disk": public_disk_id,
+                            "indicator": regression.rule_id,
+                            "previous": regression.previous,
+                            "current": regression.current,
+                            "severity": regression.severity,
+                        },
+                        created_at=observed_at,
+                    )
         return SmartComparison(
             observation_id=observation_id,
             baseline_created=collection_success and not comparable,

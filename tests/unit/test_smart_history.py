@@ -2,6 +2,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from backup_system.manager.database import open_manager_database
+from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.smart_history import (
     SmartComparison,
     SmartHistoryRepository,
@@ -84,5 +85,30 @@ def test_counter_decrease_is_reported_as_reset_not_recovery(tmp_path: Path) -> N
         comparison = _record(repository, SmartMetrics(nvme_media_errors=1), offset=1)
         assert comparison.regressions == ()
         assert comparison.reset_counters == ("nvme_media_errors",)
+    finally:
+        connection.close()
+
+
+def test_regression_alert_is_durable_and_unchanged_value_does_not_duplicate(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "manager.sqlite3"
+    connection = open_manager_database(path)
+    try:
+        repository = SmartHistoryRepository(connection, NotificationRepository(connection))
+        _record(repository, SmartMetrics(pending_sectors=0))
+        _record(repository, SmartMetrics(pending_sectors=1), offset=1)
+        _record(repository, SmartMetrics(pending_sectors=1), offset=2)
+        assert connection.execute("SELECT kind FROM notifications").fetchall() == [
+            ("smart_regression",)
+        ]
+    finally:
+        connection.close()
+
+    connection = open_manager_database(path)
+    try:
+        repository = SmartHistoryRepository(connection, NotificationRepository(connection))
+        _record(repository, SmartMetrics(pending_sectors=1), offset=3)
+        assert connection.execute("SELECT count(*) FROM notifications").fetchone() == (1,)
     finally:
         connection.close()
