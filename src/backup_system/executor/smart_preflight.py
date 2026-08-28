@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
@@ -72,16 +73,24 @@ class SubprocessSmartctlBackend:
 
 
 class SmartPreflight:
-    def __init__(self, backend: SmartctlBackend) -> None:
+    def __init__(
+        self,
+        backend: SmartctlBackend,
+        *,
+        cancellation_checkpoint: Callable[[], None] | None = None,
+    ) -> None:
         self._backend = backend
+        self._cancellation_checkpoint = cancellation_checkpoint or (lambda: None)
 
     def collect(self, config: SmartConfig) -> tuple[SmartPreflightObservation, ...]:
+        self._cancellation_checkpoint()
         try:
             devices = self._backend.scan()
         except SmartctlError:
             return tuple(_unknown(item, "smartctl scan failed") for item in config.disks)
         payloads: list[dict[str, Any]] = []
         for device in devices:
+            self._cancellation_checkpoint()
             try:
                 payloads.append(
                     self._backend.read(device, timeout_seconds=config.per_disk_timeout_seconds)

@@ -32,7 +32,10 @@ def run_recovery(
                 cancellation_checkpoint=cancellation.raise_if_requested,
             )
         ),
-        smart=SmartPreflight(SubprocessSmartctlBackend(runtime_root / "bin" / "smartctl.exe")),
+        smart=SmartPreflight(
+            SubprocessSmartctlBackend(runtime_root / "bin" / "smartctl.exe"),
+            cancellation_checkpoint=cancellation.raise_if_requested,
+        ),
         smart_sink=lambda observations: None,
         cancellation=cancellation,
     )

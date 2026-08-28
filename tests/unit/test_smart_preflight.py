@@ -1,6 +1,9 @@
 from typing import Any
 
+import pytest
+
 from backup_system.common.config import SmartConfig
+from backup_system.executor.cancellation import CancellationRequested, CancellationToken
 from backup_system.executor.smart_preflight import SmartctlError, SmartPreflight
 
 
@@ -25,14 +28,20 @@ class FakeSmartctl:
         self.payload = payload
         self.timeout: int | None = None
         self.scan_error = False
+        self.devices = (r"/dev/pd0",)
+        self.read_devices: list[str] = []
+        self.after_read: object = None
 
     def scan(self) -> tuple[str, ...]:
         if self.scan_error:
             raise SmartctlError("scan")
-        return (r"/dev/pd0",)
+        return self.devices
 
     def read(self, device: str, *, timeout_seconds: int) -> dict[str, Any]:
         self.timeout = timeout_seconds
+        self.read_devices.append(device)
+        if callable(self.after_read):
+            self.after_read()
         return self.payload
 
 
@@ -90,3 +99,19 @@ def test_missing_mismatched_or_failed_scan_is_unknown_not_exception() -> None:
     failed.scan_error = True
     observation = SmartPreflight(failed).collect(_config())[0]
     assert not observation.collection_success and observation.reason == "smartctl scan failed"
+
+
+def test_cancellation_stops_allowlist_before_next_device_read() -> None:
+    token = CancellationToken()
+    backend = FakeSmartctl({})
+    backend.devices = (r"/dev/pd0", r"/dev/pd1")
+    backend.after_read = token.request
+    preflight = SmartPreflight(
+        backend,
+        cancellation_checkpoint=token.raise_if_requested,
+    )
+
+    with pytest.raises(CancellationRequested):
+        preflight.collect(_config())
+
+    assert backend.read_devices == [r"/dev/pd0"]
