@@ -24,6 +24,8 @@ from backup_system.executor.disk_control import (
 )
 from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
 from backup_system.executor.restic_process import ResticProcessError
+from backup_system.executor.restore_request import RestoreRequestError
+from backup_system.executor.restore_target import RestoreTargetError
 from backup_system.executor.snapshot_adapter import (
     SnapshotCursorResetWarning,
     SnapshotPruneWarning,
@@ -121,4 +123,6 @@ def _failure_outcome(error: BaseException) -> ExecutorOutcome:
             else ExecutorExitCode.BACKUP_ENGINE_FAILED
         )
         return ExecutorOutcome("failed", code, True)
+    if isinstance(error, (RestoreRequestError, RestoreTargetError)):
+        return ExecutorOutcome("failed", ExecutorExitCode.RESTORE_TEST_FAILED, True)
     return ExecutorOutcome("failed", ExecutorExitCode.INTERNAL_ERROR, False)

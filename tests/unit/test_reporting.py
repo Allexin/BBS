@@ -8,6 +8,7 @@ from backup_system.executor.cancellation import CancellationRequested
 from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
 from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
 from backup_system.executor.restic_process import ResticProcessError
+from backup_system.executor.restore_target import RestoreVerificationError
 from backup_system.executor.snapshot_adapter import SnapshotCursorResetWarning, SnapshotPruneWarning
 
 RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -112,3 +113,11 @@ def test_cursor_reset_is_warning() -> None:
         lambda: (_ for _ in ()).throw(SnapshotCursorResetWarning("cursor reset"))
     )
     assert outcome.result == "warning"
+
+
+def test_restore_verification_has_stable_failure_code() -> None:
+    events, outcome = _run(
+        lambda: (_ for _ in ()).throw(RestoreVerificationError("private restored path"))
+    )
+    assert outcome.exit_code == ExecutorExitCode.RESTORE_TEST_FAILED
+    assert "private" not in json.dumps(events)

@@ -381,3 +381,35 @@ def test_manual_restore_is_claimed_before_scheduled_tail_fifo(tmp_path: Path) ->
         assert third is not None and third.operation_id == scheduled.operation_id
     finally:
         connection.close()
+
+
+def test_failed_restore_alert_contains_version_phase_and_saved_path(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    notifications = NotificationRepository(connection)
+    repository = OperationsRepository(connection, notifications)
+    repository.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+    try:
+        repository.enqueue(
+            deduplication_key="manual:restore-alert",
+            job_id="data",
+            kind="restore",
+            trigger_source="manual",
+            request={"version": "a" * 64},
+        )
+        run = repository.claim_next()
+        assert run is not None
+        repository.update_stage(run.run_id, "verifying")
+        repository.set_restore_target(run.run_id, r"D:\Restores\BackupRestore-data")
+        repository.finish_run(
+            run.run_id,
+            result=RunResult.FAILED,
+            exit_code=27,
+            disk_offline_confirmed=True,
+        )
+        notification = notifications.next_due()
+        assert notification is not None
+        assert notification.payload["version"] == "a" * 64
+        assert notification.payload["stage"] == "verifying"
+        assert notification.payload["result_path"] == r"D:\Restores\BackupRestore-data"
+    finally:
+        connection.close()
