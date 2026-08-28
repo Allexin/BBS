@@ -14,6 +14,7 @@
 | Unicode, emoji и путь длиннее 260 символов | Пройдено: проверен путь длиной 345 символов |
 | Открытый файл без VSS | Пройдено |
 | VSS binding и отсутствие orphan | Пройдено на синтетических данных |
+| Нативный `IVssBackupComponents` и exact SnapshotSet cleanup | Пройдено |
 | Стабильный namespace через VSS | Пройдено: VSS device prefix отсутствует |
 | Online/offline тестового диска | Пройдено через Windows Storage cmdlet |
 | Прямой Windows Storage API и восстановление mount point | Пройдено |
@@ -31,6 +32,12 @@
 через VSS, отсутствие нового VSS orphan, стабильный restic namespace, полный check,
 restore с независимой сверкой хешей и цикл offline/online выделенного тестового диска.
 После теста диск вернулся online и сохранил состояние Healthy.
+
+Автоматизированная hardware suite повторно пройдена целиком: restic/VSS и цикл
+offline/online, прямой Win32 Storage API с восстановлением mount point, а также
+нативный `IVssBackupComponents` с чтением контрольных bytes и удалением exact owned
+SnapshotSet. Все три guarded теста завершились успешно. После suite тестовый диск
+подтверждён online и writable; временные VSS и mount-point каталоги отсутствуют.
 
 Fail-fast probe получил машинно-разбираемый source read error во время `archival` и
 немедленно отправил cooperative interrupt. Restic завершился с exit code 130, snapshot
