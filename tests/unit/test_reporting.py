@@ -4,6 +4,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from backup_system.common.exit_codes import ExecutorExitCode
+from backup_system.executor.cancellation import CancellationRequested
 from backup_system.executor.lifecycle import LifecycleCleanupError
 from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
 
@@ -59,3 +60,14 @@ def test_unexpected_error_does_not_leak_diagnostic_text_to_stdout_json() -> None
     serialized = json.dumps(events)
     assert "private" not in serialized
     assert outcome.exit_code == ExecutorExitCode.INTERNAL_ERROR
+
+
+def test_cooperative_cancellation_has_normalized_exit() -> None:
+    def cancel() -> None:
+        raise CancellationRequested("requested")
+
+    events, outcome = _run(cancel)
+
+    assert events[-1]["result"] == "cancelled"
+    assert events[-1]["exit_code"] == ExecutorExitCode.CANCELLED
+    assert outcome.exit_code == ExecutorExitCode.CANCELLED

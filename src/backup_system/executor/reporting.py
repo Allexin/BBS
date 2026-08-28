@@ -17,6 +17,7 @@ from backup_system.common.events import (
 )
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.time import utc_now
+from backup_system.executor.cancellation import CancellationRequested
 from backup_system.executor.disk_control import (
     DiskIdentityMismatchError,
     DiskNotFoundError,
@@ -98,6 +99,6 @@ def _failure_outcome(error: BaseException) -> ExecutorOutcome:
         return ExecutorOutcome("failed", ExecutorExitCode.DISK_NOT_FOUND, False)
     if isinstance(error, DiskIdentityMismatchError):
         return ExecutorOutcome("failed", ExecutorExitCode.DISK_IDENTITY_MISMATCH, False)
-    if isinstance(error, KeyboardInterrupt):
+    if isinstance(error, (CancellationRequested, KeyboardInterrupt)):
         return ExecutorOutcome("cancelled", ExecutorExitCode.CANCELLED, False)
     return ExecutorOutcome("failed", ExecutorExitCode.INTERNAL_ERROR, False)

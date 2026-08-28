@@ -1837,6 +1837,17 @@ Manager не применяет автоматический hard kill по вр
 действительно завис, оператор исследует и завершает нужный process средствами
 Windows; последующий startup применяет обычные `interrupted`/disk recovery rules.
 
+Cooperative cancel передаётся конкретному executor через наследуемый anonymous stdin
+pipe, созданный `CreateProcess`/`asyncio` без shell. Manager держит write-end открытым
+всё время run и при `cancel-current` либо service stop записывает единственный
+ASCII-фрейм `cancel\n`, затем продолжает читать stdout/stderr до терминального события
+и завершения процесса. Executor читает stdin отдельным служебным потоком, выставляет
+in-process cancellation token и не трактует EOF как успешный cancel. Других команд,
+JSON payload или глобально именованного IPC в этом канале нет. Adapter-ы регулярно
+проверяют token, cooperative завершают принадлежащие дочерние процессы и переходят к
+VSS/disk cleanup. Неизвестный или слишком длинный stdin-фрейм является локальной
+protocol error и не запускает произвольное действие.
+
 ## 31. Алгоритм executor
 
 Для `run`:
