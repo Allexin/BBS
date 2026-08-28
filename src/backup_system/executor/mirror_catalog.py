@@ -143,6 +143,31 @@ class MirrorCatalog:
                 (str(generation_id), _now(), entry.path_key),
             )
 
+    def accept_new_absent(
+        self,
+        *,
+        path_key: str,
+        relative_path: str,
+        generation_id: UUID,
+    ) -> None:
+        with self._require_connection():
+            self._require_connection().execute(
+                """
+                INSERT INTO mirror_entries (
+                    path_key, relative_path, desired_state, size_bytes, source_mtime_ns,
+                    sha256, content_generation, verified_at, temp_relative_path,
+                    generation_id, updated_at
+                ) VALUES (?, ?, 'absent', NULL, NULL, NULL, NULL, NULL, NULL, ?, ?)
+                ON CONFLICT(path_key) DO UPDATE SET
+                    relative_path=excluded.relative_path,
+                    desired_state='absent',
+                    temp_relative_path=NULL,
+                    generation_id=excluded.generation_id,
+                    updated_at=excluded.updated_at
+                """,
+                (path_key, relative_path, str(generation_id), _now()),
+            )
+
     def clear_temp(self, path_key: str) -> None:
         with self._require_connection():
             self._require_connection().execute(

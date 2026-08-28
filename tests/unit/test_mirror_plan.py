@@ -36,6 +36,9 @@ def test_scan_plan_orders_deletes_and_replacements_and_respects_excludes(tmp_pat
     _write(destination / "smaller.bin", b"long")
     _write(destination / "larger.bin", b"x")
     _write(destination / "old.bin", b"old")
+    (destination / "obsolete-empty").mkdir()
+    (destination / "kept-empty").mkdir()
+    (source / "kept-empty").mkdir()
     _write(destination / ".backup-system" / "catalog.sqlite3", b"catalog")
 
     source_scan = scan_tree(source, excludes=("excluded",))
@@ -52,6 +55,7 @@ def test_scan_plan_orders_deletes_and_replacements_and_respects_excludes(tmp_pat
     assert plan.planned_mirror_size == 14
     assert plan.largest_copy_size == 6
     assert plan.required_peak_mirror_size == 20
+    assert plan.destination_directories == ("obsolete-empty",)
 
 
 def test_scan_does_not_follow_reparse_or_symlink(tmp_path: Path) -> None:

@@ -179,10 +179,14 @@ def build_plan(
     copied_sizes = [
         item.source_size_bytes or 0 for item in actions if item.action != PlanAction.DELETE
     ]
+    source_directory_keys = {_parts(value) for value in source.directories}
+    removable_directories = [
+        value for value in destination.directories if _parts(value) not in source_directory_keys
+    ]
     return MirrorPlan(
         files=tuple(actions),
         destination_directories=tuple(
-            sorted(destination.directories, key=lambda value: (-len(_parts(value)), value))
+            sorted(removable_directories, key=lambda value: (-len(_parts(value)), value))
         ),
         current_mirror_size=destination.total_bytes,
         planned_mirror_size=source.total_bytes,

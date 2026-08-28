@@ -87,7 +87,7 @@ class WindowsMirrorFileOperations:
                 else COPYFILE2_PROGRESS_CONTINUE
             )
 
-        progress = _COPY_PROGRESS(progress_callback)  # type: ignore[no-untyped-call]
+        progress = _COPY_PROGRESS(progress_callback)
         parameters = _CopyFile2ExtendedParameters(
             ctypes.sizeof(_CopyFile2ExtendedParameters),
             COPY_FILE_FAIL_IF_EXISTS,
