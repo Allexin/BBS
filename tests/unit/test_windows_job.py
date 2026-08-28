@@ -221,3 +221,28 @@ def test_adapter_failure_cleans_snapshot_then_returns_disk_offline() -> None:
 
     assert raised.value.primary_error is failure
     assert calls[-4:] == ["adapter", "snapshot-cleanup", "offline", "unlock"]
+
+
+def test_destination_only_operation_skips_source_snapshot() -> None:
+    calls: list[object] = []
+    config = _snapshot()
+
+    result = _runtime(calls).run_destination(
+        config=config,
+        smart_config=_smart_config(),
+        adapter=lambda context: calls.append(("adapter", context)) or "checked",
+    )
+
+    assert result.value == "checked"
+    assert not any(isinstance(value, tuple) and value[0] == "snapshot" for value in calls)
+    assert calls[-3:] == [
+        (
+            "adapter",
+            WindowsDataContext(
+                PureWindowsPath(r"F:\Data"),
+                VolumeObservation("volume", r"C:\BackupVolumes\primary", True),
+            ),
+        ),
+        "offline",
+        "unlock",
+    ]

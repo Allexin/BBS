@@ -67,6 +67,22 @@ class ExecutorWindowsJob:
             action=with_backup_volume,
         )
 
+    def run_destination(
+        self,
+        *,
+        config: DataJobConfig,
+        smart_config: SmartConfig,
+        adapter: Callable[[WindowsDataContext], T],
+    ) -> ExecutorWindowsResult:
+        return self._coordinator.run(
+            disk=config.disk,
+            marker=marker_expectation(config),
+            smart_config=smart_config,
+            action=lambda volume: adapter(
+                WindowsDataContext(PureWindowsPath(config.source.path), volume)
+            ),
+        )
+
 
 def marker_expectation(config: DataJobConfig) -> MarkerExpectation:
     if isinstance(config, SnapshotJobConfig):

@@ -89,3 +89,14 @@ def test_restore_requires_absolute_request_file(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="absolute"):
         invocation.argv()
+
+
+def test_check_uses_normative_subset_mode(tmp_path: Path) -> None:
+    invocation = ExecutorInvocation(
+        python_executable=tmp_path / "python.exe",
+        operation="check",
+        run_id=RUN_ID,
+        job_id="job-1",
+        mode="subset",
+    )
+    assert invocation.argv()[-2:] == ("--mode", "subset")

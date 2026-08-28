@@ -4,10 +4,10 @@ import argparse
 import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
-from typing import BinaryIO, TextIO
+from typing import BinaryIO, Protocol, TextIO
 from uuid import UUID
 
-from backup_system.common.config import ExecutorJobConfig, validate_job_id
+from backup_system.common.config import ExecutorJobConfig, MirrorJobConfig, validate_job_id
 from backup_system.common.config_io import (
     ConfigLoadError,
     load_smart_config,
@@ -16,18 +16,22 @@ from backup_system.common.config_io import (
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
+from backup_system.common.time import utc_now
 from backup_system.executor.cancellation import (
     CancellationProtocolError,
     CancellationToken,
     StdinCancellationMonitor,
 )
 from backup_system.executor.lifecycle import LifecycleOperationError
+from backup_system.executor.mirror_runtime import run_mirror_operation
 from backup_system.executor.operation_policy import (
     OperationNotAllowedError,
     require_operation_allowed,
 )
 from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
 from backup_system.executor.runtime import run_recovery
+from backup_system.executor.smart_events import build_smart_events
+from backup_system.executor.smart_preflight import SmartPreflightObservation
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -40,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     check = subparsers.add_parser("check")
     check.add_argument("--run-id", required=True, type=parse_uuid4)
     check.add_argument("--job", required=True, type=validate_job_id)
-    check.add_argument("--mode", choices=("metadata", "sample", "full"), required=True)
+    check.add_argument("--mode", choices=("metadata", "subset", "full"), required=True)
     restore = subparsers.add_parser("restore")
     restore.add_argument("--run-id", required=True, type=parse_uuid4)
     restore.add_argument("--job", required=True, type=validate_job_id)
@@ -80,7 +84,62 @@ def main(argv: Sequence[str] | None = None) -> int:
             input_stream=sys.stdin.buffer,
             output_stream=sys.stdout,
         )
+    if isinstance(config, MirrorJobConfig) and arguments.command in {
+        "run",
+        "check",
+        "repair-mirror",
+    }:
+        smart_config = load_smart_config(config_dir / "smart.yaml")
+        return _execute_operation(
+            run_id=arguments.run_id,
+            job_id=arguments.job,
+            operation=lambda token, smart_sink: run_mirror_operation(
+                runtime_root=root,
+                config=config,
+                smart_config=smart_config,
+                run_id=arguments.run_id,
+                operation=arguments.command,
+                mode=getattr(arguments, "mode", None),
+                cancellation=token,
+                smart_sink=smart_sink,
+            ),
+            input_stream=sys.stdin.buffer,
+            output_stream=sys.stdout,
+        )
     return 0
+
+
+class _DataOperation(Protocol):
+    def __call__(
+        self,
+        token: CancellationToken,
+        smart_sink: Callable[[tuple[SmartPreflightObservation, ...]], None],
+    ) -> object: ...
+
+
+def _execute_operation(
+    *,
+    run_id: UUID,
+    job_id: str,
+    operation: _DataOperation,
+    input_stream: BinaryIO,
+    output_stream: TextIO,
+) -> int:
+    token = CancellationToken()
+    monitor = StdinCancellationMonitor(input_stream, token)
+    monitor.start()
+    sink = JsonLineEventSink(output_stream)
+
+    def smart_sink(observations: tuple[SmartPreflightObservation, ...]) -> None:
+        for event in build_smart_events(observations, timestamp=utc_now()):
+            sink.emit(event)
+
+    outcome = ExecutorRunReporter(sink).execute(
+        run_id=run_id,
+        job_id=job_id,
+        operation=lambda: operation(token, smart_sink),
+    )
+    return int(outcome.exit_code)
 
 
 def _execute_recovery(

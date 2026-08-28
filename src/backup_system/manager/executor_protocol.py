@@ -55,7 +55,7 @@ class ExecutorInvocation:
             validate_job_id(self.job_id),
         ]
         if self.operation == "check":
-            if self.mode not in {"metadata", "sample", "full"}:
+            if self.mode not in {"metadata", "subset", "full"}:
                 raise ValueError("check requires a valid mode")
             arguments.extend(("--mode", self.mode))
         elif self.mode is not None:
