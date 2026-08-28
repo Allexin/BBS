@@ -2605,6 +2605,14 @@ CREATE TABLE notifications (
     sent_at TEXT
 );
 
+CREATE TABLE daily_report_state (
+    report_id TEXT PRIMARY KEY,
+    last_formed_at TEXT NOT NULL,
+    last_evaluated_at TEXT NOT NULL,
+    next_fire_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+
 CREATE TABLE physical_disks (
     disk_id TEXT PRIMARY KEY,
     public_disk_id TEXT NOT NULL UNIQUE,
