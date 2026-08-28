@@ -107,3 +107,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_repos
 После первого progress helper отсоединяет только созданный им VHDX, классифицирует
 первую repository retry diagnostic и cooperative-прерывает restic. Тест ограничен
 таймаутами; результат сохраняется в `.poc-work/stage0/repository-io-result.json`.
+
+## Автоматизированный повторный запуск
+
+Обычный `pytest` пропускает внешние и аппаратные PoC. Restic integration включается
+через `BBS_RUN_STAGE0_INTEGRATION=1` и запуск `pytest tests/integration`.
+
+Hardware suite разрушителен для содержимого выбранного тестового диска. В elevated
+PowerShell он требует одновременно `BBS_RUN_STAGE0_HARDWARE=1`, букву в
+`BBS_HARDWARE_TEST_DRIVE` и точный preflight UniqueId в
+`BACKUP_SYSTEM_HARDWARE_TEST_DISK_ID`, после чего запускается как
+`pytest tests/hardware`. Без всех guard-параметров операции с диском не выполняются.

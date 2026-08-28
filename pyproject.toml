@@ -39,6 +39,10 @@ packages = ["src/backup_system"]
 [tool.pytest.ini_options]
 addopts = "--strict-config --strict-markers --timeout=30"
 testpaths = ["tests"]
+markers = [
+  "integration: bounded integration test using external executables",
+  "hardware: destructive test restricted to an explicitly guarded disposable disk",
+]
 
 [tool.ruff]
 target-version = "py312"
