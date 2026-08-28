@@ -40,10 +40,9 @@ stdout и stderr restic, прерывает процесс при первом s
 
 ## Привилегированные и аппаратные проверки
 
-VSS binding требует повышенных прав. Online/offline и mount-point проверки будут
-добавлены отдельным сценарием с обязательным точным значением
-`BACKUP_SYSTEM_HARDWARE_TEST_DISK_ID`. Они запрещены на системном диске и не должны
-запускаться на носителе с реальными данными.
+VSS binding, online/offline и mount-point проверки требуют повышенных прав и
+обязательного точного значения `BACKUP_SYSTEM_HARDWARE_TEST_DISK_ID`. Они запрещены
+на системном диске и не должны запускаться на носителе с реальными данными.
 
 Первый запуск из PowerShell, открытого от имени администратора, выполняет только
 инвентаризацию и проверку закреплённого restic:
@@ -58,8 +57,22 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_prefl
 `.poc-work/stage0/admin-preflight.json`. После запуска файл можно исследовать прямо в
 рабочей папке; копировать stdout не требуется.
 
-После выбора пустого тестового диска elevated PowerShell должен установить guard из
-локального preflight и запустить hardware-сценарий. Пример для `D:`:
+Для полной повторной приёмки на выделенном тестовом диске `D:` используется одна
+команда в PowerShell, открытом от имени администратора:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\run_hardware_acceptance.ps1 -TestDrive D
+```
+
+Runner заново выполняет read-only preflight, требует, чтобы `D:` был online,
+writable и не являлся boot/system disk, сам устанавливает process-local guard и
+запускает только `tests/hardware/test_stage0_windows.py`. Общий результат и полный
+stdout/stderr сохраняются соответственно в
+`.poc-work/stage0/hardware-acceptance-result.json` и
+`.poc-work/stage0/hardware-acceptance.log`.
+
+Отдельный hardware-сценарий при необходимости можно запустить вручную после
+установки guard из локального preflight. Пример для `D:`:
 
 ```powershell
 $preflight = Get-Content .\.poc-work\stage0\admin-preflight.json -Raw | ConvertFrom-Json
