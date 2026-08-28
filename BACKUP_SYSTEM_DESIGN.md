@@ -2654,9 +2654,11 @@ CREATE TABLE backup_metrics (
 );
 ```
 
-Поле `operations.state` принимает `queued|running|completed|removed`. `completed`
-означает наличие терминального run независимо от его результата; `removed` означает
-удаление из очереди до создания run. Поле `runs.state` принимает `running|finished`,
+Поле `operations.state` принимает
+`queued|running|completed|removed|discarded_on_restart|discarded_on_service_stop`.
+`completed` означает наличие терминального run независимо от его результата;
+остальные terminal states означают снятие из очереди до создания run по указанной
+причине. Поле `runs.state` принимает `running|finished`,
 а фактический исход `success|warning|failed|cancelled|interrupted` хранится отдельно
 в `runs.result`. Переход operation `queued → running` и создание её единственного run
 выполняются одной транзакцией; завершение run и переход operation

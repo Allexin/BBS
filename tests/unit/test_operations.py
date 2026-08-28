@@ -162,7 +162,7 @@ def test_finished_run_rejects_further_mutation(tmp_path: Path) -> None:
         connection.close()
 
 
-def test_restart_reconciles_running_and_preserves_queued_tail(tmp_path: Path) -> None:
+def test_restart_reconciles_running_and_discards_queued_tail(tmp_path: Path) -> None:
     path = tmp_path / "manager.sqlite3"
     repository, connection = _repository(path)
     active = repository.enqueue(
@@ -184,14 +184,18 @@ def test_restart_reconciles_running_and_preserves_queued_tail(tmp_path: Path) ->
     connection = open_manager_database(path)
     try:
         restarted = OperationsRepository(connection)
-        assert restarted.reconcile_interrupted() == (claimed.run_id,)
+        result = restarted.reconcile_startup()
+        assert result.interrupted_run_ids == (claimed.run_id,)
+        assert result.discarded_operation_ids == (queued.operation_id,)
         states = dict(connection.execute("SELECT operation_id, state FROM operations").fetchall())
         assert states[str(active.operation_id)] == OperationState.COMPLETED
-        assert states[str(queued.operation_id)] == OperationState.QUEUED
+        assert states[str(queued.operation_id)] == OperationState.DISCARDED_ON_RESTART
         run = connection.execute(
             "SELECT state, result FROM runs WHERE run_id = ?", (str(claimed.run_id),)
         ).fetchone()
         assert run == ("finished", RunResult.INTERRUPTED)
-        assert restarted.reconcile_interrupted() == ()
+        repeated = restarted.reconcile_startup()
+        assert repeated.interrupted_run_ids == ()
+        assert repeated.discarded_operation_ids == ()
     finally:
         connection.close()

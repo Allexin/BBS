@@ -18,6 +18,8 @@ class OperationState(StrEnum):
     RUNNING = "running"
     COMPLETED = "completed"
     REMOVED = "removed"
+    DISCARDED_ON_RESTART = "discarded_on_restart"
+    DISCARDED_ON_SERVICE_STOP = "discarded_on_service_stop"
 
 
 class RunState(StrEnum):
@@ -58,6 +60,12 @@ class ClaimedRun:
     job_id: str
     kind: str
     mode: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class StartupReconciliation:
+    interrupted_run_ids: tuple[UUID, ...]
+    discarded_operation_ids: tuple[UUID, ...]
 
 
 class StateTransitionError(RuntimeError):
@@ -327,7 +335,7 @@ class OperationsRepository:
                 },
             )
 
-    def reconcile_interrupted(self, *, reconciled_at: datetime | None = None) -> tuple[UUID, ...]:
+    def reconcile_startup(self, *, reconciled_at: datetime | None = None) -> StartupReconciliation:
         timestamp = require_aware(reconciled_at or utc_now()).isoformat()
         with self._connection:
             rows = self._connection.execute(
@@ -372,7 +380,24 @@ class OperationsRepository:
                         "timestamp": timestamp,
                     },
                 )
-        return tuple(UUID(str(row[0])) for row in rows)
+            queued_rows = self._connection.execute(
+                "SELECT operation_id FROM operations WHERE state = ? ORDER BY queued_at, rowid",
+                (OperationState.QUEUED,),
+            ).fetchall()
+            self._connection.execute(
+                """UPDATE operations
+                SET state = ?, removed_at = ?, terminal_reason = ? WHERE state = ?""",
+                (
+                    OperationState.DISCARDED_ON_RESTART,
+                    timestamp,
+                    "manager_restart",
+                    OperationState.QUEUED,
+                ),
+            )
+        return StartupReconciliation(
+            interrupted_run_ids=tuple(UUID(str(row[0])) for row in rows),
+            discarded_operation_ids=tuple(UUID(str(row[0])) for row in queued_rows),
+        )
 
     def _insert_event(
         self,
