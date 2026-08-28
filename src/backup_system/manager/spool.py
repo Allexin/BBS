@@ -2,44 +2,23 @@
 
 from __future__ import annotations
 
-import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
 
-from backup_system.common.commands import LOCAL_COMMAND_ADAPTER, CommandBase, LocalCommand
+from backup_system.common.commands import LOCAL_COMMAND_ADAPTER, MAX_COMMAND_BYTES, LocalCommand
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.time import require_aware, utc_now
 from backup_system.manager.layout import RuntimeLayout
 
-MAX_COMMAND_BYTES = 64 * 1024
 MAX_INCOMING_AGE = timedelta(hours=24)
 MAX_FUTURE_SKEW = timedelta(minutes=5)
 
 
 class SpoolValidationError(ValueError):
     """An incoming command artifact violates the spool contract."""
-
-
-def publish_command(layout: RuntimeLayout, command: CommandBase) -> Path:
-    """Flush a command to a same-volume temp file, then publish without overwrite."""
-    payload = command.model_dump_json().encode("utf-8")
-    if len(payload) > MAX_COMMAND_BYTES:
-        raise SpoolValidationError("command exceeds maximum size")
-    temporary = layout.temp / f"command-{command.command_id}-{uuid4()}.tmp"
-    destination = layout.commands_incoming / f"{command.command_id}.json"
-    try:
-        with temporary.open("xb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        temporary.rename(destination)
-    except BaseException:
-        temporary.unlink(missing_ok=True)
-        raise
-    return destination
 
 
 class CommandSpool:

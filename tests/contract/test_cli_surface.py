@@ -3,6 +3,7 @@ import argparse
 import pytest
 
 from backup_system.ctl.cli import build_parser as ctl_parser
+from backup_system.ctl.cli import command_from_arguments
 from backup_system.executor.cli import build_parser as executor_parser
 from backup_system.manager.cli import build_parser as manager_parser
 
@@ -45,3 +46,24 @@ def test_invalid_job_id_is_rejected_at_cli_boundary() -> None:
 def test_non_uuid4_operation_id_is_rejected_at_cli_boundary() -> None:
     with pytest.raises(SystemExit):
         ctl_parser().parse_args(["queue", "remove", "00000000-0000-1000-8000-000000000000"])
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        ["run", "data"],
+        ["check", "data", "--mode", "full"],
+        ["restore-test", "data"],
+        ["repair-mirror", "data"],
+        ["recover", "data"],
+        ["cancel-current"],
+        ["queue", "remove", "00000000-0000-4000-8000-000000000000"],
+    ],
+)
+def test_mutating_cli_builds_a_typed_spool_command(arguments: list[str]) -> None:
+    parsed = ctl_parser().parse_args(arguments)
+    assert command_from_arguments(parsed) is not None
+
+
+def test_read_only_cli_does_not_build_a_spool_command() -> None:
+    assert command_from_arguments(ctl_parser().parse_args(["status"])) is None

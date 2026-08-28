@@ -26,3 +26,9 @@ def test_executor_does_not_import_manager() -> None:
     assert not any(
         name.startswith("backup_system.manager") for name in imported_modules("executor")
     )
+
+
+def test_control_cli_does_not_import_manager_or_executor() -> None:
+    imports = imported_modules("ctl")
+    assert not any(name.startswith("backup_system.manager") for name in imports)
+    assert not any(name.startswith("backup_system.executor") for name in imports)

@@ -4,12 +4,21 @@ import argparse
 import sys
 from collections.abc import Sequence
 from pathlib import Path
+from uuid import UUID
 
+from backup_system.common.commands import (
+    CancelCurrentCommand,
+    CommandBase,
+    QueueRemoveCommand,
+    RunCommand,
+    publish_command,
+)
 from backup_system.common.config import validate_job_id
 from backup_system.common.config_io import ConfigLoadError, validate_config_tree
 from backup_system.common.exit_codes import ExecutorExitCode
-from backup_system.common.ids import parse_uuid4
+from backup_system.common.ids import new_command_id, parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
+from backup_system.common.time import utc_now
 
 
 def _job_id(value: str) -> str:
@@ -58,6 +67,49 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def command_from_arguments(arguments: argparse.Namespace) -> CommandBase | None:
+    command_id = new_command_id()
+    created_at = utc_now()
+    if arguments.command == "cancel-current":
+        return CancelCurrentCommand(
+            command_id=command_id, created_at=created_at, kind="cancel-current"
+        )
+    if arguments.command == "queue" and arguments.queue_command == "remove":
+        return QueueRemoveCommand(
+            command_id=command_id,
+            created_at=created_at,
+            kind="queue-remove",
+            operation_id=UUID(arguments.operation_id),
+        )
+    operations = {
+        "run": "backup",
+        "check": "check",
+        "restore": "restore",
+        "restore-test": "restore-test",
+        "repair-mirror": "repair-mirror",
+        "recover": "recover",
+    }
+    operation = operations.get(arguments.command)
+    if operation is None:
+        return None
+    values: dict[str, object] = {
+        "command_id": command_id,
+        "created_at": created_at,
+        "kind": "run",
+        "job_id": arguments.job_id,
+        "operation": operation,
+    }
+    if arguments.command == "check":
+        values["mode"] = arguments.mode
+    elif arguments.command == "restore":
+        values.update(
+            version=arguments.version,
+            path=arguments.path,
+            target=arguments.target,
+        )
+    return RunCommand.model_validate(values)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     if arguments.command == "config" and arguments.config_command == "validate":
@@ -67,4 +119,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (ConfigLoadError, RuntimeRootError) as error:
             print(str(error), file=sys.stderr)
             return ExecutorExitCode.CONFIG_INVALID
+        return 0
+    command = command_from_arguments(arguments)
+    if command is not None:
+        try:
+            root = discover_runtime_root(Path(sys.executable))
+            destination = publish_command(root, command)
+        except (OSError, RuntimeRootError, ValueError) as error:
+            print(str(error), file=sys.stderr)
+            return ExecutorExitCode.INTERNAL_ERROR
+        print(f"command_id={command.command_id} path={destination}")
     return 0

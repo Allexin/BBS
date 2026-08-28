@@ -3,12 +3,17 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
-from backup_system.common.commands import CancelCurrentCommand, QueueRemoveCommand, RunCommand
+from backup_system.common.commands import (
+    CancelCurrentCommand,
+    QueueRemoveCommand,
+    RunCommand,
+    publish_command,
+)
 from backup_system.manager.command_processor import CommandDisposition, CommandProcessor
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 from backup_system.manager.operations import OperationsRepository
-from backup_system.manager.spool import CommandSpool, publish_command
+from backup_system.manager.spool import CommandSpool
 
 
 def _runtime(
@@ -33,7 +38,7 @@ def test_run_command_is_enqueued_and_completed(tmp_path: Path) -> None:
             job_id="data",
             operation="backup",
         )
-        publish_command(layout, command)
+        publish_command(layout.root, command)
         spool = CommandSpool(layout)
         assert spool.accept_incoming() == (command,)
         outcomes = CommandProcessor(
@@ -57,7 +62,7 @@ def test_replayed_accepted_command_is_deduplicated(tmp_path: Path) -> None:
             job_id="data",
             operation="backup",
         )
-        publish_command(layout, command)
+        publish_command(layout.root, command)
         spool = CommandSpool(layout)
         spool.accept_incoming()
         existing = operations.enqueue(
@@ -95,8 +100,8 @@ def test_remove_and_cancel_commands_dispatch_to_typed_handlers(tmp_path: Path) -
         cancel = CancelCurrentCommand(
             command_id=uuid4(), created_at=datetime.now(UTC), kind="cancel-current"
         )
-        publish_command(layout, remove)
-        publish_command(layout, cancel)
+        publish_command(layout.root, remove)
+        publish_command(layout.root, cancel)
         spool = CommandSpool(layout)
         spool.accept_incoming()
         outcomes = CommandProcessor(

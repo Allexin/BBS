@@ -2,16 +2,19 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime
-from pathlib import PureWindowsPath
+from pathlib import Path, PureWindowsPath
 from typing import Annotated, Literal
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 from backup_system.common.config import validate_job_id
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.time import require_aware
+
+MAX_COMMAND_BYTES = 64 * 1024
 
 
 class CommandBase(BaseModel):
@@ -99,3 +102,22 @@ LocalCommand = Annotated[
     Field(discriminator="kind"),
 ]
 LOCAL_COMMAND_ADAPTER: TypeAdapter[LocalCommand] = TypeAdapter(LocalCommand)
+
+
+def publish_command(root: Path, command: CommandBase) -> Path:
+    """Flush a command to same-volume temp, then publish without overwriting input."""
+    payload = command.model_dump_json().encode("utf-8")
+    if len(payload) > MAX_COMMAND_BYTES:
+        raise ValueError("command exceeds maximum size")
+    temporary = root / "data" / "temp" / f"command-{command.command_id}-{uuid4()}.tmp"
+    destination = root / "data" / "commands" / "incoming" / f"{command.command_id}.json"
+    try:
+        with temporary.open("xb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        temporary.rename(destination)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    return destination
