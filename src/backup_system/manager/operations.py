@@ -406,6 +406,27 @@ class OperationsRepository:
             discarded_operation_ids=tuple(UUID(str(row[0])) for row in queued_rows),
         )
 
+    def discard_queued_for_service_stop(
+        self, *, discarded_at: datetime | None = None
+    ) -> tuple[UUID, ...]:
+        timestamp = require_aware(discarded_at or utc_now()).isoformat()
+        with self._connection:
+            rows = self._connection.execute(
+                "SELECT operation_id FROM operations WHERE state = ? ORDER BY queued_at, rowid",
+                (OperationState.QUEUED,),
+            ).fetchall()
+            self._connection.execute(
+                """UPDATE operations
+                SET state = ?, removed_at = ?, terminal_reason = ? WHERE state = ?""",
+                (
+                    OperationState.DISCARDED_ON_SERVICE_STOP,
+                    timestamp,
+                    "service_stopping",
+                    OperationState.QUEUED,
+                ),
+            )
+        return tuple(UUID(str(row[0])) for row in rows)
+
     def _insert_event(
         self,
         run_id: UUID,

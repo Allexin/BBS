@@ -199,3 +199,29 @@ def test_restart_reconciles_running_and_discards_queued_tail(tmp_path: Path) -> 
         assert repeated.discarded_operation_ids == ()
     finally:
         connection.close()
+
+
+def test_service_stop_discards_only_queued_tail(tmp_path: Path) -> None:
+    repository, connection = _repository(tmp_path / "manager.sqlite3")
+    try:
+        active = repository.enqueue(
+            deduplication_key="manual:active",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+        )
+        queued = repository.enqueue(
+            deduplication_key="manual:queued",
+            job_id="data",
+            kind="check",
+            trigger_source="manual",
+        )
+        claimed = repository.claim_next()
+        assert claimed is not None and claimed.operation_id == active.operation_id
+        assert repository.discard_queued_for_service_stop() == (queued.operation_id,)
+        assert repository.discard_queued_for_service_stop() == ()
+        states = dict(connection.execute("SELECT operation_id, state FROM operations"))
+        assert states[str(active.operation_id)] == OperationState.RUNNING
+        assert states[str(queued.operation_id)] == OperationState.DISCARDED_ON_SERVICE_STOP
+    finally:
+        connection.close()
