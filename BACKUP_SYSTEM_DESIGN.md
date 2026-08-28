@@ -1887,10 +1887,11 @@ exit with normalized code
 - Нельзя считать ранее сохранённый номер Windows disk number устойчивым идентификатором.
 - Все отдельные hardware/API ожидания lifecycle имеют bounded timeout; общая
   длительность backup/check и ожидание cooperative service-stop timeout не имеют.
-- `IVssAsync` для создания snapshot ожидается не более 120 секунд. После bounded
-  `Wait` executor обязательно проверяет `QueryStatus`: `VSS_S_ASYNC_PENDING`
-  классифицируется как timeout, `VSS_S_ASYNC_CANCELLED` — как отменённая VSS-операция,
-  и оба результата переходят в обычный owned-snapshot cleanup.
+- `IVssAsync` для создания snapshot опрашивается через `QueryStatus` каждые 250 мс
+  не более 120 секунд. `VSS_S_ASYNC_PENDING` продолжает bounded polling,
+  `VSS_S_ASYNC_CANCELLED` классифицируется как отменённая VSS-операция. При timeout
+  или cooperative cancel executor вызывает `IVssAsync::Cancel`, затем переходит в
+  обычный owned-snapshot cleanup.
 - `finally` не подавляет исходную ошибку, но failure вернуть диск offline имеет более высокий severity.
 - Сигналы остановки manager приводят к прекращению restic и выполнению cleanup.
 - Executor не продолжает следующий job: один процесс — одна операция.

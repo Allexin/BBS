@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import ctypes
 import os
+import time
+from collections.abc import Callable
 from ctypes import wintypes
 from typing import Any, Protocol
 from uuid import UUID
@@ -12,7 +14,8 @@ from backup_system.executor.vss import VssSnapshot
 from backup_system.executor.windows_vss import VssBackendError
 
 HRESULT = ctypes.c_long
-VSS_ASYNC_TIMEOUT_MILLISECONDS = 120_000
+VSS_ASYNC_TIMEOUT_SECONDS = 120.0
+VSS_ASYNC_POLL_SECONDS = 0.25
 VSS_S_ASYNC_PENDING = 0x00042309
 VSS_S_ASYNC_FINISHED = 0x0004230A
 VSS_S_ASYNC_CANCELLED = 0x0004230B
@@ -69,8 +72,15 @@ class NativeVssFactory(Protocol):
 class NativeVssBackend:
     """PreparedVssBackend retaining one COM requestor across Start/Add/Do."""
 
-    def __init__(self, factory: NativeVssFactory | None = None) -> None:
-        self._factory = factory or CtypesVssFactory()
+    def __init__(
+        self,
+        factory: NativeVssFactory | None = None,
+        *,
+        cancellation_checkpoint: Callable[[], None] | None = None,
+    ) -> None:
+        if factory is not None and cancellation_checkpoint is not None:
+            raise ValueError("custom VSS factory owns its cancellation integration")
+        self._factory = factory or CtypesVssFactory(cancellation_checkpoint)
         self._active: tuple[UUID, NativeVssSession] | None = None
 
     def start_snapshot_set(self) -> UUID:
@@ -111,7 +121,7 @@ class NativeVssBackend:
 
 
 class CtypesVssFactory:
-    def __init__(self) -> None:
+    def __init__(self, cancellation_checkpoint: Callable[[], None] | None = None) -> None:
         if os.name != "nt":
             raise OSError("VSS is available only on Windows")
         self._vssapi = ctypes.WinDLL("vssapi", use_last_error=True)
@@ -126,6 +136,7 @@ class CtypesVssFactory:
         self._free_properties = self._vssapi.VssFreeSnapshotPropertiesInternal
         self._free_properties.argtypes = [ctypes.POINTER(_SnapshotProperties)]
         self._free_properties.restype = None
+        self._cancellation_checkpoint = cancellation_checkpoint or (lambda: None)
 
     def create(self) -> NativeVssSession:
         result = self._ole32.CoInitializeEx(None, 0)
@@ -144,16 +155,26 @@ class CtypesVssFactory:
             if uninitialize is not None:
                 uninitialize()
             raise VssBackendError("CreateVssBackupComponents returned null", 0x80004003)
-        return CtypesVssSession(pointer, self._free_properties, uninitialize)
+        return CtypesVssSession(
+            pointer,
+            self._free_properties,
+            uninitialize,
+            self._cancellation_checkpoint,
+        )
 
 
 class CtypesVssSession:
     def __init__(
-        self, pointer: ctypes.c_void_p, free_properties: Any, uninitialize: Any | None
+        self,
+        pointer: ctypes.c_void_p,
+        free_properties: Any,
+        uninitialize: Any | None,
+        cancellation_checkpoint: Callable[[], None],
     ) -> None:
         self._pointer = pointer
         self._free_properties = free_properties
         self._uninitialize = uninitialize
+        self._cancellation_checkpoint = cancellation_checkpoint
         self._closed = False
         try:
             self._initialize()
@@ -182,7 +203,7 @@ class CtypesVssSession:
         self._invoke(38, "DoSnapshotSet", ctypes.POINTER(ctypes.c_void_p))(
             self._pointer, ctypes.byref(asynchronous)
         )
-        _wait_async(asynchronous, "DoSnapshotSet")
+        _wait_async(asynchronous, "DoSnapshotSet", self._cancellation_checkpoint)
         properties = _SnapshotProperties()
         properties_loaded = False
         try:
@@ -263,20 +284,62 @@ def _raw_method(pointer: ctypes.c_void_p, index: int, result: Any, *arguments: A
     return prototype(address)
 
 
-def _wait_async(pointer: ctypes.c_void_p, operation: str) -> None:
+def _wait_async(
+    pointer: ctypes.c_void_p,
+    operation: str,
+    cancellation_checkpoint: Callable[[], None],
+) -> None:
     if not pointer.value:
         raise VssBackendError(f"{operation} returned null async", 0x80004003)
     try:
-        wait = _raw_method(pointer, 4, HRESULT, wintypes.DWORD)
-        _check(f"{operation}.Wait", wait(pointer, VSS_ASYNC_TIMEOUT_MILLISECONDS))
-        status = HRESULT()
         query = _raw_method(
             pointer, 5, HRESULT, ctypes.POINTER(HRESULT), ctypes.POINTER(wintypes.LONG)
         )
-        _check(f"{operation}.QueryStatus", query(pointer, ctypes.byref(status), None))
-        _require_async_finished(status.value, operation)
+        cancel_method = _raw_method(pointer, 3, HRESULT)
+
+        def query_status() -> int:
+            status = HRESULT()
+            _check(f"{operation}.QueryStatus", query(pointer, ctypes.byref(status), None))
+            return status.value
+
+        def cancel() -> None:
+            _check(f"{operation}.Cancel", cancel_method(pointer))
+
+        _poll_async_status(
+            operation=operation,
+            query_status=query_status,
+            cancel=cancel,
+            cancellation_checkpoint=cancellation_checkpoint,
+        )
     finally:
         _raw_method(pointer, 2, ctypes.c_ulong)(pointer)
+
+
+def _poll_async_status(
+    *,
+    operation: str,
+    query_status: Callable[[], int],
+    cancel: Callable[[], None],
+    cancellation_checkpoint: Callable[[], None],
+    monotonic: Callable[[], float] = time.monotonic,
+    sleep: Callable[[float], None] = time.sleep,
+) -> None:
+    deadline = monotonic() + VSS_ASYNC_TIMEOUT_SECONDS
+    while True:
+        status = query_status()
+        if _unsigned(status) != VSS_S_ASYNC_PENDING:
+            _require_async_finished(status, operation)
+            return
+        try:
+            cancellation_checkpoint()
+        except BaseException:
+            cancel()
+            raise
+        remaining = deadline - monotonic()
+        if remaining <= 0:
+            cancel()
+            raise VssBackendError(f"{operation} timed out", HRESULT_WAIT_TIMEOUT)
+        sleep(min(VSS_ASYNC_POLL_SECONDS, remaining))
 
 
 def _require_async_finished(status: int, operation: str) -> None:

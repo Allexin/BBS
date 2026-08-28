@@ -2,6 +2,7 @@ from uuid import UUID
 
 import pytest
 
+from backup_system.executor.cancellation import CancellationRequested, CancellationToken
 from backup_system.executor.native_vss import (
     HRESULT_OPERATION_CANCELLED,
     HRESULT_WAIT_TIMEOUT,
@@ -9,6 +10,7 @@ from backup_system.executor.native_vss import (
     VSS_S_ASYNC_FINISHED,
     VSS_S_ASYNC_PENDING,
     NativeVssBackend,
+    _poll_async_status,
     _require_async_finished,
 )
 from backup_system.executor.vss import VssSnapshot
@@ -93,3 +95,42 @@ def test_async_status_requires_finished_and_classifies_bounded_wait_failures() -
     with pytest.raises(VssBackendError) as cancelled:
         _require_async_finished(VSS_S_ASYNC_CANCELLED, "DoSnapshotSet")
     assert cancelled.value.code == HRESULT_OPERATION_CANCELLED
+
+
+def test_async_poll_cancels_vss_when_executor_is_cancelled() -> None:
+    token = CancellationToken()
+    token.request()
+    cancel_calls: list[object] = []
+
+    with pytest.raises(CancellationRequested):
+        _poll_async_status(
+            operation="DoSnapshotSet",
+            query_status=lambda: VSS_S_ASYNC_PENDING,
+            cancel=lambda: cancel_calls.append("cancel"),
+            cancellation_checkpoint=token.raise_if_requested,
+            monotonic=lambda: 0.0,
+            sleep=lambda seconds: None,
+        )
+
+    assert cancel_calls == ["cancel"]
+
+
+def test_async_poll_timeout_cancels_vss_before_failure() -> None:
+    clock = [0.0]
+    cancel_calls: list[object] = []
+
+    def sleep(seconds: float) -> None:
+        clock[0] += seconds
+
+    with pytest.raises(VssBackendError) as raised:
+        _poll_async_status(
+            operation="DoSnapshotSet",
+            query_status=lambda: VSS_S_ASYNC_PENDING,
+            cancel=lambda: cancel_calls.append("cancel"),
+            cancellation_checkpoint=lambda: None,
+            monotonic=lambda: clock[0],
+            sleep=sleep,
+        )
+
+    assert raised.value.code == HRESULT_WAIT_TIMEOUT
+    assert cancel_calls == ["cancel"]
