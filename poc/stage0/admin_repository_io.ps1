@@ -99,7 +99,7 @@ try {
     $result.restic_exit_code = $probe.restic_exit_code
     $result.structured_error_events = $probe.structured_error_events_before_interrupt
     $result.diagnostic_stream = $probe.diagnostic_stream
-    $result.pinned_retry_shape_matched = $probe.pinned_retry_shape_matched
+    $result.classification_kind = $probe.classification_kind
     $result.cooperative_interrupt_sent = $probe.cooperative_interrupt_sent
     $result.seconds_from_detach_to_classification = $probe.seconds_from_detach_to_classification
 } catch {

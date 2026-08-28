@@ -85,6 +85,7 @@ def main() -> int:
     detached_at: float | None = None
     diagnostic_at: float | None = None
     diagnostic_stream: str | None = None
+    classification_kind: str | None = None
     structured_errors = 0
     interrupt_sent = False
     deadline = started + 60
@@ -100,16 +101,26 @@ def main() -> int:
                 event = json.loads(line)
             except json.JSONDecodeError:
                 event = None
-            if isinstance(event, dict) and event.get("message_type") in {"error", "exit_error"}:
+            message_type = event.get("message_type") if isinstance(event, dict) else None
+            if message_type in {"error", "exit_error"}:
                 structured_errors += 1
             if detached_at is None and isinstance(event, dict) and event.get("message_type") == "status":
                 if int(event.get("bytes_done", 0)) > 0:
                     detach_vhd(args.vhd, args.diskpart_script)
                     detached_at = time.monotonic()
                     continue
+            if detached_at is not None and message_type in {"error", "exit_error"}:
+                diagnostic_at = time.monotonic()
+                diagnostic_stream = stream_name
+                classification_kind = f"json_{message_type}"
+                if message_type == "error" and process.poll() is None:
+                    process.send_signal(signal.CTRL_BREAK_EVENT)
+                    interrupt_sent = True
+                break
             if detached_at is not None and RETRY_PREFIX in line and args.repository.lower() in line.lower():
                 diagnostic_at = time.monotonic()
                 diagnostic_stream = stream_name
+                classification_kind = "pinned_retry_diagnostic"
                 process.send_signal(signal.CTRL_BREAK_EVENT)
                 interrupt_sent = True
                 break
@@ -117,13 +128,15 @@ def main() -> int:
         if detached_at is None:
             raise RuntimeError("backup produced no progress before timeout or exit")
         if diagnostic_at is None:
-            raise RuntimeError("no repository retry diagnostic was observed after detach")
+            raise RuntimeError("no classifiable repository error was observed after detach")
         try:
             process.wait(timeout=15)
         except subprocess.TimeoutExpired as error:
             process.kill()
             process.wait(timeout=5)
             raise RuntimeError("restic ignored cooperative repository I/O interruption") from error
+        if process.returncode == 0:
+            raise RuntimeError("restic reported a repository fault but exited successfully")
     finally:
         if process.poll() is None:
             process.kill()
@@ -137,7 +150,7 @@ def main() -> int:
                 "status": "passed",
                 "vhd_detached_after_progress": True,
                 "diagnostic_stream": diagnostic_stream,
-                "pinned_retry_shape_matched": True,
+                "classification_kind": classification_kind,
                 "structured_error_events_before_interrupt": structured_errors,
                 "cooperative_interrupt_sent": interrupt_sent,
                 "restic_exit_code": process.returncode,
