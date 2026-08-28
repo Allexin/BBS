@@ -83,5 +83,5 @@ python .\poc\stage0\storage_api_probe.py --drive D
 
 Probe сопоставляет том с PhysicalDrive через `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS`,
 переключает offline/online через `IOCTL_DISK_SET_DISK_ATTRIBUTES` и проверяет
-`SetVolumeMountPointW` на временной папке `.poc-work/stage0/api-mount`. Результат
+`SetVolumeMountPointW` на временной пустой папке `C:\BBSStage0ApiMount`. Результат
 сохраняется в `.poc-work/stage0/storage-api-result.json`.

@@ -15,7 +15,7 @@ import time
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 PREFLIGHT_PATH = PROJECT_ROOT / ".poc-work" / "stage0" / "admin-preflight.json"
 RESULT_PATH = PROJECT_ROOT / ".poc-work" / "stage0" / "storage-api-result.json"
-MOUNT_PATH = PROJECT_ROOT / ".poc-work" / "stage0" / "api-mount"
+MOUNT_PATH = Path(os.environ.get("SystemDrive", "C:")) / "BBSStage0ApiMount"
 
 GENERIC_READ = 0x80000000
 GENERIC_WRITE = 0x40000000
