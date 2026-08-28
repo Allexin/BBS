@@ -2,10 +2,12 @@
 
 import argparse
 import sys
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
+from typing import BinaryIO, TextIO
+from uuid import UUID
 
-from backup_system.common.config import validate_job_id
+from backup_system.common.config import ExecutorJobConfig, validate_job_id
 from backup_system.common.config_io import (
     ConfigLoadError,
     load_smart_config,
@@ -14,10 +16,18 @@ from backup_system.common.config_io import (
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
+from backup_system.executor.cancellation import (
+    CancellationProtocolError,
+    CancellationToken,
+    StdinCancellationMonitor,
+)
+from backup_system.executor.lifecycle import LifecycleOperationError
 from backup_system.executor.operation_policy import (
     OperationNotAllowedError,
     require_operation_allowed,
 )
+from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
+from backup_system.executor.runtime import run_recovery
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -43,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
+    config: ExecutorJobConfig | None = None
     try:
         root = discover_runtime_root(Path(sys.executable))
         config_dir = root / "data" / "config"
@@ -55,4 +66,51 @@ def main(argv: Sequence[str] | None = None) -> int:
     except (ConfigLoadError, OperationNotAllowedError, RuntimeRootError) as error:
         print(str(error), file=sys.stderr)
         return ExecutorExitCode.CONFIG_INVALID
+    if arguments.command == "recover":
+        if config is None:
+            raise RuntimeError("recover config was not loaded")
+        return _execute_recovery(
+            run_id=arguments.run_id,
+            job_id=arguments.job,
+            operation=lambda token: run_recovery(
+                runtime_root=root,
+                config=config,
+                cancellation=token,
+            ),
+            input_stream=sys.stdin.buffer,
+            output_stream=sys.stdout,
+        )
     return 0
+
+
+def _execute_recovery(
+    *,
+    run_id: UUID,
+    job_id: str,
+    operation: Callable[[CancellationToken], object],
+    input_stream: BinaryIO,
+    output_stream: TextIO,
+) -> int:
+    token = CancellationToken()
+    monitor = StdinCancellationMonitor(input_stream, token)
+    monitor.start()
+
+    def checkpoint() -> None:
+        if (error := monitor.protocol_error) is not None:
+            raise CancellationProtocolError(str(error))
+        token.raise_if_requested()
+
+    def checked_operation() -> object:
+        value = operation(token)
+        try:
+            checkpoint()
+        except BaseException as error:
+            raise LifecycleOperationError(error) from error
+        return value
+
+    outcome = ExecutorRunReporter(JsonLineEventSink(output_stream)).execute(
+        run_id=run_id,
+        job_id=job_id,
+        operation=checked_operation,
+    )
+    return int(outcome.exit_code)
