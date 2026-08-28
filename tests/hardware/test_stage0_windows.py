@@ -71,3 +71,21 @@ def test_direct_storage_api_on_disposable_disk() -> None:
     )
     assert completed.returncode == 0
     _assert_passed(RESULT_ROOT / "storage-api-result.json")
+
+
+@pytest.mark.timeout(180)
+def test_native_vss_on_disposable_disk() -> None:
+    drive = _guarded_drive()
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(PROJECT_ROOT / "poc" / "stage0" / "native_vss_probe.py"),
+            "--drive",
+            drive,
+        ],
+        cwd=PROJECT_ROOT,
+        check=False,
+        timeout=170,
+    )
+    assert completed.returncode == 0
+    _assert_passed(RESULT_ROOT / "native-vss-result.json")

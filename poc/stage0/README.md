@@ -118,3 +118,8 @@ PowerShell он требует одновременно `BBS_RUN_STAGE0_HARDWARE
 `BBS_HARDWARE_TEST_DRIVE` и точный preflight UniqueId в
 `BACKUP_SYSTEM_HARDWARE_TEST_DISK_ID`, после чего запускается как
 `pytest tests/hardware`. Без всех guard-параметров операции с диском не выполняются.
+
+Hardware suite также проверяет нативный `IVssBackupComponents` backend: создаёт только
+`<test-drive>:\bbs-stage0-native-vss\control.bin`, читает его через client-accessible
+shadow path и удаляет точный owned SnapshotSet. Другие диски не используются как VSS
+source и их состояние не изменяется.
