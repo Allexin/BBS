@@ -49,7 +49,16 @@ def _protect_for_local_system(path: Path) -> None:
     if os.name != "nt":
         os.chmod(path, 0o600)
         return
+    import win32api  # type: ignore[import-untyped]
     import win32security  # type: ignore[import-untyped]
+
+    token = win32security.OpenProcessToken(
+        win32api.GetCurrentProcess(), win32security.TOKEN_QUERY
+    )
+    current_sid = win32security.GetTokenInformation(token, win32security.TokenUser)[0]
+    system_sid = win32security.CreateWellKnownSid(win32security.WinLocalSystemSid, None)
+    if not win32security.EqualSid(current_sid, system_sid):
+        raise ResticSecretError("password mode requires the LocalSystem executor identity")
 
     descriptor = win32security.ConvertStringSecurityDescriptorToSecurityDescriptor(
         "D:P(A;;FA;;;SY)", win32security.SDDL_REVISION_1

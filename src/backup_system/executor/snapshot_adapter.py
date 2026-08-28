@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable, Iterator, Mapping, Sequence
-from contextlib import contextmanager
+from contextlib import AbstractContextManager, contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
 from backup_system.common.config import (
+    EncryptionConfig,
     MaintenanceJobConfig,
     SnapshotJobConfig,
     SnapshotRetentionConfig,
@@ -42,6 +43,12 @@ class ResticRunner(Protocol):
     def run(self, arguments: Sequence[str], *, expect_json: bool = True) -> ResticResult: ...
 
 
+class ResticAuthFactory(Protocol):
+    def __call__(
+        self, encryption: EncryptionConfig, secret_directory: Path
+    ) -> AbstractContextManager[tuple[str, ...]]: ...
+
+
 @dataclass(frozen=True, slots=True)
 class SnapshotBackupResult:
     snapshot_id: str
@@ -66,12 +73,14 @@ class SnapshotAdapter:
         secret_directory: Path,
         stage_sink: Callable[[str], None] | None = None,
         snapshot_sink: Callable[[str, int], None] | None = None,
+        auth_factory: ResticAuthFactory = restic_auth_arguments,
     ) -> None:
         self._runner = runner
         self._states = states
         self._secret_directory = secret_directory
         self._stage_sink = stage_sink or (lambda stage: None)
         self._snapshot_sink = snapshot_sink or (lambda snapshot_id, bytes_added: None)
+        self._auth_factory = auth_factory
 
     def backup(self, config: SnapshotJobConfig, *, source_root: Path) -> SnapshotBackupResult:
         loaded = self._load(config)
@@ -152,12 +161,11 @@ class SnapshotAdapter:
         try:
             self._runner.verify_version()
             self._stage_sink("retention")
-            with restic_auth_arguments(
-                config.repository.encryption, self._secret_directory
-            ) as auth:
+            with self._auth_factory(config.repository.encryption, self._secret_directory) as auth:
                 self._run(
-                    ["--repository", config.repository.path, *auth, "prune", "--json"],
+                    ["--repo", config.repository.path, *auth, "prune", "--json"],
                     config,
+                    expect_json=False,
                 )
         except ResticProcessError as error:
             raise SnapshotPruneWarning("restic prune did not complete") from error
@@ -189,18 +197,18 @@ class SnapshotAdapter:
 
     @contextmanager
     def _auth(self, config: SnapshotJobConfig) -> Iterator[tuple[str, ...]]:
-        with restic_auth_arguments(
-            config.repository.encryption, self._secret_directory
-        ) as auth:
-            yield ("--repository", config.repository.path, *auth)
+        with self._auth_factory(config.repository.encryption, self._secret_directory) as auth:
+            yield ("--repo", config.repository.path, *auth)
 
     def _run(
         self,
         arguments: Sequence[str],
         config: SnapshotJobConfig | MaintenanceJobConfig,
+        *,
+        expect_json: bool = True,
     ) -> ResticResult:
         try:
-            return self._runner.run(arguments)
+            return self._runner.run(arguments, expect_json=expect_json)
         except ResticProcessError as error:
             if (
                 error.fault == "repository_key_invalid"

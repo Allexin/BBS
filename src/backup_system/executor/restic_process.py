@@ -150,7 +150,9 @@ class ResticProcess:
                 thread.join(timeout=2)
         if return_code != 0:
             raise ResticProcessError(
-                "command_failed", "restic command failed", exit_code=return_code
+                "command_failed",
+                f"restic {_operation_name(arguments)} failed with exit code {return_code}",
+                exit_code=return_code,
             )
         return ResticResult(return_code, tuple(events))
 
@@ -216,3 +218,8 @@ def _repository_argument(arguments: Sequence[str]) -> str | None:
         except (ValueError, IndexError):
             continue
     return None
+
+
+def _operation_name(arguments: Sequence[str]) -> str:
+    known = {"backup", "check", "forget", "init", "prune", "restore", "snapshots"}
+    return next((value for value in arguments if value in known), "command")
