@@ -62,7 +62,14 @@ def test_subtree_restore_preserves_logical_parent_structure(tmp_path: Path) -> N
     target.mkdir()
     source.mkdir()
     _prepare(destination)
-    outcome = MirrorRestore(cancellation=CancellationToken(), copy_file=_copy).run(
+    progress: list[tuple[str, int]] = []
+    outcome = MirrorRestore(
+        cancellation=CancellationToken(),
+        copy_file=_copy,
+        progress_sink=lambda stage, done, total, bytes_done, bytes_total: progress.append(
+            (stage, done)
+        ),
+    ).run(
         destination_root=destination,
         source_root=source,
         request=_request(target, "Photos/2020"),
@@ -71,6 +78,7 @@ def test_subtree_restore_preserves_logical_parent_structure(tmp_path: Path) -> N
     )
     assert (outcome.result_path / "Photos" / "2020" / "image.jpg").read_bytes() == b"image"
     assert not (outcome.result_path / "root.txt").exists()
+    assert progress == [("restoring", 1), ("verifying", 1)]
 
 
 def test_single_file_restore_and_whole_source_layout(tmp_path: Path) -> None:

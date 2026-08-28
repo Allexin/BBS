@@ -30,11 +30,15 @@ class MirrorRestore:
         copy_file: RestoreFileCopier,
         stage_sink: Callable[[str], None] | None = None,
         ready_sink: Callable[[Path], None] | None = None,
+        progress_sink: Callable[[str, int, int, int, int], None] | None = None,
     ) -> None:
         self._cancellation = cancellation
         self._copy_file = copy_file
         self._stage_sink = stage_sink or (lambda stage: None)
         self._ready_sink = ready_sink
+        self._progress_sink = progress_sink or (
+            lambda stage, files_done, files_total, bytes_done, bytes_total: None
+        )
 
     def run(
         self,
@@ -61,19 +65,32 @@ class MirrorRestore:
             )
             for entry in entries
         )
-        target = RestoreTarget(self._cancellation, ready_sink=self._ready_sink)
+        target = RestoreTarget(
+            self._cancellation,
+            ready_sink=self._ready_sink,
+            progress_sink=lambda files_done, files_total, bytes_done, bytes_total: (
+                self._progress_sink(
+                    "verifying", files_done, files_total, bytes_done, bytes_total
+                )
+            ),
+        )
         result = target.create(
             request,
             forbidden_roots=[destination_root, destination_root / ".backup-system", source_root],
             required_bytes=sum(item.size_bytes for item in manifest),
         )
         self._stage_sink("restoring")
-        for item in manifest:
+        bytes_done = 0
+        for index, item in enumerate(manifest, start=1):
             self._cancellation.raise_if_requested()
             source = destination_root / Path(item.relative_path)
             final = result / Path(item.relative_path)
             final.parent.mkdir(parents=True, exist_ok=True)
             self._copy_file(source, final, item.size_bytes)
+            bytes_done += item.size_bytes
+            self._progress_sink(
+                "restoring", index, len(manifest), bytes_done, sum(e.size_bytes for e in manifest)
+            )
         self._stage_sink("verifying")
         return target.verify_and_complete(result, manifest)
 

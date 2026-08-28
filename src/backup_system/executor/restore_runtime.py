@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
+from uuid import uuid4
 
 from backup_system.common.config import MirrorJobConfig, SmartConfig, SnapshotJobConfig
 from backup_system.common.events import (
     EventBase,
+    Progress,
     RestoreCompleted,
     RestoreTargetReady,
     StageChanged,
@@ -17,7 +20,8 @@ from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.mirror_restore import MirrorRestore
 from backup_system.executor.mirror_win32 import WindowsMirrorFileOperations
 from backup_system.executor.restic_process import ResticProcess
-from backup_system.executor.restore_request import load_restore_request
+from backup_system.executor.restore_request import RestoreRequest, load_restore_request
+from backup_system.executor.restore_target import RestoreTargetError
 from backup_system.executor.runtime import build_windows_job
 from backup_system.executor.smart_preflight import SmartPreflightObservation
 from backup_system.executor.snapshot_restore import SnapshotRestore
@@ -49,6 +53,25 @@ def run_restore_operation(
             )
         )
 
+    def progress(
+        stage_name: str,
+        files_done: int,
+        files_total: int,
+        bytes_done: int,
+        bytes_total: int,
+    ) -> None:
+        event_sink(
+            Progress(
+                event="progress",
+                timestamp=utc_now(),
+                stage=stage_name,
+                files_done=files_done,
+                files_total=files_total,
+                bytes_done=bytes_done,
+                bytes_total=bytes_total,
+            )
+        )
+
     windows_job = build_windows_job(
         runtime_root=runtime_root,
         cancellation=cancellation,
@@ -72,6 +95,7 @@ def run_restore_operation(
                 copy_file=copy_file,
                 stage_sink=stage,
                 ready_sink=ready,
+                progress_sink=progress,
             )
             result = mirror_restore.run(
                 destination_root=Path(config.destination.path),
@@ -87,6 +111,7 @@ def run_restore_operation(
                 secret_directory=runtime_root / "data" / "state" / "executor" / "secrets",
                 stage_sink=stage,
                 ready_sink=ready,
+                progress_sink=progress,
             )
             result = snapshot_restore.run(config, request)
         event_sink(
@@ -105,3 +130,63 @@ def run_restore_operation(
         smart_config=smart_config,
         adapter=lambda context: restore(),
     )
+
+
+def run_restore_test_operation(
+    *,
+    runtime_root: Path,
+    config: SnapshotJobConfig | MirrorJobConfig,
+    smart_config: SmartConfig,
+    cancellation: CancellationToken,
+    smart_sink: Callable[[tuple[SmartPreflightObservation, ...]], None],
+    event_sink: Callable[[EventBase], None],
+) -> tuple[object, ...]:
+    configured_paths = config.verification.restore_test_paths
+    if not configured_paths:
+        raise RestoreTargetError("restore-test has no configured control paths")
+    target = runtime_root / "data" / "restore-tests"
+    target.mkdir(parents=True, exist_ok=True)
+    temporary_directory = runtime_root / "data" / "temp"
+    temporary_directory.mkdir(parents=True, exist_ok=True)
+    outcomes: list[object] = []
+    for selected in configured_paths:
+        relative = _relative_control_path(config.source.path, selected)
+        request = RestoreRequest.model_construct(
+            schema_version=1,
+            request_id=uuid4(),
+            job_id=config.id,
+            version="latest",
+            path=relative,
+            target=str(target),
+        )
+        request_file = temporary_directory / f"restore-test-{request.request_id}.json"
+        try:
+            with request_file.open("xb", encoding="utf-8", newline="\n") as stream:
+                stream.write(request.model_dump_json())
+                stream.flush()
+                os.fsync(stream.fileno())
+            outcomes.append(
+                run_restore_operation(
+                    runtime_root=runtime_root,
+                    config=config,
+                    smart_config=smart_config,
+                    request_file=request_file,
+                    cancellation=cancellation,
+                    smart_sink=smart_sink,
+                    event_sink=event_sink,
+                )
+            )
+        finally:
+            request_file.unlink(missing_ok=True)
+    return tuple(outcomes)
+
+
+def _relative_control_path(source: str, selected: str) -> str:
+    source_path = PureWindowsPath(source)
+    selected_path = PureWindowsPath(selected)
+    try:
+        relative = selected_path.relative_to(source_path)
+    except ValueError as error:
+        raise RestoreTargetError("restore-test path is outside source root") from error
+    value = str(relative)
+    return value if value else "."

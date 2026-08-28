@@ -35,6 +35,7 @@ class SnapshotRestore:
         stage_sink: Callable[[str], None] | None = None,
         auth_factory: ResticAuthFactory = restic_auth_arguments,
         ready_sink: Callable[[Path], None] | None = None,
+        progress_sink: Callable[[str, int, int, int, int], None] | None = None,
     ) -> None:
         self._runner = runner
         self._cancellation = cancellation
@@ -42,10 +43,21 @@ class SnapshotRestore:
         self._stage_sink = stage_sink or (lambda stage: None)
         self._auth_factory = auth_factory
         self._ready_sink = ready_sink
+        self._progress_sink = progress_sink or (
+            lambda stage, files_done, files_total, bytes_done, bytes_total: None
+        )
 
     def run(self, config: SnapshotJobConfig, request: RestoreRequest) -> RestoreResult:
         self._runner.verify_version()
-        target = RestoreTarget(self._cancellation, ready_sink=self._ready_sink)
+        target = RestoreTarget(
+            self._cancellation,
+            ready_sink=self._ready_sink,
+            progress_sink=lambda files_done, files_total, bytes_done, bytes_total: (
+                self._progress_sink(
+                    "verifying", files_done, files_total, bytes_done, bytes_total
+                )
+            ),
+        )
         result = target.create(
             request,
             forbidden_roots=[Path(config.repository.path), Path(config.source.path)],
@@ -81,6 +93,7 @@ class SnapshotRestore:
             selection=request.path,
             result=result,
             cancellation=self._cancellation,
+            progress_sink=self._progress_sink,
         )
         shutil.rmtree(staging)
         self._stage_sink("verifying")
@@ -144,6 +157,7 @@ def _publish_selected(
     selection: str,
     result: Path,
     cancellation: CancellationToken,
+    progress_sink: Callable[[str, int, int, int, int], None],
 ) -> tuple[RestoreManifestEntry, ...]:
     files = (
         [selected]
@@ -151,7 +165,9 @@ def _publish_selected(
         else [path for path in selected.rglob("*") if path.is_file()]
     )
     manifest: list[RestoreManifestEntry] = []
-    for path in files:
+    total_bytes = sum(path.stat().st_size for path in files)
+    bytes_done = 0
+    for index, path in enumerate(files, start=1):
         cancellation.raise_if_requested()
         relative = path.relative_to(source)
         final = result / relative
@@ -160,6 +176,8 @@ def _publish_selected(
         size = path.stat().st_size
         os.replace(path, final)
         manifest.append(RestoreManifestEntry(relative.as_posix(), size, digest))
+        bytes_done += size
+        progress_sink("restoring", index, len(files), bytes_done, total_bytes)
     if not manifest and selection != ".":
         raise RestoreTargetError("selected snapshot subtree contains no files")
     return tuple(manifest)

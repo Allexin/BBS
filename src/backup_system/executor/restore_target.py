@@ -45,9 +45,13 @@ class RestoreTarget:
         cancellation: CancellationToken,
         *,
         ready_sink: Callable[[Path], None] | None = None,
+        progress_sink: Callable[[int, int, int, int], None] | None = None,
     ) -> None:
         self._cancellation = cancellation
         self._ready_sink = ready_sink or (lambda path: None)
+        self._progress_sink = progress_sink or (
+            lambda files_done, files_total, bytes_done, bytes_total: None
+        )
 
     def create(
         self,
@@ -108,13 +112,16 @@ class RestoreTarget:
                 actual[key] = path
         if set(actual) != set(expected):
             raise RestoreVerificationError("restore result file set changed")
-        for key, path in actual.items():
+        bytes_done = 0
+        for index, (key, path) in enumerate(actual.items(), start=1):
             item = expected[key]
             if (
                 path.stat().st_size != item.size_bytes
                 or _sha256(path, self._cancellation) != item.sha256
             ):
                 raise RestoreVerificationError("restored file content does not match backup")
+            bytes_done += item.size_bytes
+            self._progress_sink(index, len(entries), bytes_done, sum(e.size_bytes for e in entries))
         marker = result / ".restore-incomplete"
         marker.unlink()
         _flush_directory(result)

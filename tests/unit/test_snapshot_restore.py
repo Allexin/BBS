@@ -98,13 +98,22 @@ def test_snapshot_subtree_restore_preserves_layout(tmp_path: Path) -> None:
     target = tmp_path / "target"
     target.mkdir()
     runner = FakeRunner()
-    outcome = _adapter(runner, tmp_path).run(_config(), _request(target, "Folder"))
+    progress: list[tuple[str, int]] = []
+    outcome = SnapshotRestore(
+        runner=runner,
+        cancellation=CancellationToken(),
+        secret_directory=tmp_path / "secrets",
+        progress_sink=lambda stage, done, total, bytes_done, bytes_total: progress.append(
+            (stage, done)
+        ),
+    ).run(_config(), _request(target, "Folder"))
     assert (outcome.result_path / "Folder" / "file.txt").read_bytes() == b"snapshot-data"
     assert not (outcome.result_path / "root.txt").exists()
     restore_command = runner.commands[1]
     assert SNAPSHOT_ID in restore_command
     assert "--verify" in restore_command
     assert "--overwrite" in restore_command and "never" in restore_command
+    assert progress == [("restoring", 1), ("verifying", 1)]
 
 
 def test_explicit_snapshot_must_belong_to_filtered_job_list(tmp_path: Path) -> None:
