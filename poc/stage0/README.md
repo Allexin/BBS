@@ -72,3 +72,16 @@ disk, очищает только `D:\bbs-stage0-poc`, проверяет restic
 открытым файлом, check/restore/хеши и отсутствие VSS orphan, затем выполняет цикл
 offline/online. Результат сохраняется в
 `.poc-work/stage0/admin-hardware-result.json`.
+
+Прямой Win32 Storage API проверяется отдельным elevated Python probe с тем же guard:
+
+```powershell
+$preflight = Get-Content .\.poc-work\stage0\admin-preflight.json -Raw | ConvertFrom-Json
+$env:BACKUP_SYSTEM_HARDWARE_TEST_DISK_ID = ($preflight.disks | Where-Object { @($_.partitions.drive_letter) -contains 'D' }).unique_id
+python .\poc\stage0\storage_api_probe.py --drive D
+```
+
+Probe сопоставляет том с PhysicalDrive через `IOCTL_VOLUME_GET_VOLUME_DISK_EXTENTS`,
+переключает offline/online через `IOCTL_DISK_SET_DISK_ATTRIBUTES` и проверяет
+`SetVolumeMountPointW` на временной папке `.poc-work/stage0/api-mount`. Результат
+сохраняется в `.poc-work/stage0/storage-api-result.json`.
