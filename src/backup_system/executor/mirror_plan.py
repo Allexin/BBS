@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import ctypes
 import os
 import stat
+import struct
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path, PureWindowsPath
@@ -30,6 +32,30 @@ class PortableWindowsPathKeys:
         if path.is_absolute() or path.drive or ".." in path.parts or not path.parts:
             raise MirrorPlanError(f"unsafe relative path: {relative_path!r}")
         return "\\".join(path.parts).casefold()
+
+
+class WindowsOrdinalPathKeys:
+    """Canonical keys using the same NT Unicode upcase primitive as Windows."""
+
+    def __init__(self) -> None:
+        if os.name != "nt":
+            raise OSError("Windows ordinal path keys require Windows")
+        self._upcase = ctypes.WinDLL("ntdll").RtlUpcaseUnicodeChar
+        self._upcase.argtypes = [ctypes.c_ushort]
+        self._upcase.restype = ctypes.c_ushort
+
+    def key(self, relative_path: str) -> str:
+        path = PureWindowsPath(relative_path)
+        if path.is_absolute() or path.drive or ".." in path.parts or not path.parts:
+            raise MirrorPlanError(f"unsafe relative path: {relative_path!r}")
+        normalized = "\\".join(path.parts)
+        encoded = normalized.encode("utf-16-le", errors="surrogatepass")
+        units = struct.unpack(f"<{len(encoded) // 2}H", encoded)
+        upper = struct.pack(
+            f"<{len(units)}H",
+            *(int(self._upcase(unit)) for unit in units),
+        )
+        return upper.decode("utf-16-le", errors="surrogatepass")
 
 
 @dataclass(frozen=True, slots=True)

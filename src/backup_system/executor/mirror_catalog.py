@@ -198,6 +198,20 @@ class MirrorCatalog:
         with self._require_connection():
             self._set_meta("generation_id", str(generation_id))
 
+    def verification_gate_active(self) -> bool:
+        row = self._require_connection().execute(
+            "SELECT value FROM catalog_meta WHERE key='verification_gate'"
+        ).fetchone()
+        return row is not None and str(row[0]) == "active"
+
+    def activate_verification_gate(self) -> None:
+        with self._require_connection():
+            self._set_meta("verification_gate", "active")
+
+    def clear_verification_gate(self) -> None:
+        with self._require_connection():
+            self._set_meta("verification_gate", "clear")
+
     def _initialize(self) -> None:
         connection = self._require_connection()
         with connection:
@@ -231,6 +245,7 @@ class MirrorCatalog:
             self._set_meta("job_id", self._job_id)
             self._set_meta("marker_uuid", self._marker_uuid)
             self._set_meta("generation_id", "")
+            self._set_meta("verification_gate", "clear")
 
     def _validate(self) -> None:
         connection = self._require_connection()

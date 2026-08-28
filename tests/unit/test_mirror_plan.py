@@ -8,6 +8,7 @@ from backup_system.executor.mirror_plan import (
     PlanAction,
     ScannedFile,
     ScanResult,
+    WindowsOrdinalPathKeys,
     assess_capacity,
     build_plan,
     scan_tree,
@@ -84,3 +85,8 @@ def test_capacity_rejects_before_mutation_and_reports_growth_warning() -> None:
     assert assessment.projected_remaining_free_bytes == 180
     assert assessment.positive_growth_bytes == 20
     assert assessment.growth_warning is True
+
+
+def test_production_path_keys_use_windows_ordinal_upcase() -> None:
+    keys = WindowsOrdinalPathKeys()
+    assert keys.key(r"Dir\File.txt") == keys.key(r"dir\file.TXT")

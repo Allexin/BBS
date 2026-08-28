@@ -6,8 +6,12 @@ from uuid import UUID
 import pytest
 
 from backup_system.executor.cancellation import CancellationToken
-from backup_system.executor.mirror_adapter import MirrorAdapter, MirrorVerificationError
-from backup_system.executor.mirror_plan import MirrorOutOfSpaceError
+from backup_system.executor.mirror_adapter import (
+    MirrorAdapter,
+    MirrorRepairNotAllowedError,
+    MirrorVerificationError,
+)
+from backup_system.executor.mirror_plan import MirrorOutOfSpaceError, PortableWindowsPathKeys
 
 RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 MARKER = UUID("22222222-2222-4222-8222-222222222222")
@@ -54,7 +58,11 @@ def _write(path: Path, value: bytes) -> None:
 
 
 def _adapter(files: LocalFiles | None = None) -> MirrorAdapter:
-    return MirrorAdapter(files=files or LocalFiles(), cancellation=CancellationToken())
+    return MirrorAdapter(
+        files=files or LocalFiles(),
+        cancellation=CancellationToken(),
+        path_keys=PortableWindowsPathKeys(),
+    )
 
 
 def test_backup_produces_exact_mirror_and_full_check_finds_corruption(tmp_path: Path) -> None:
@@ -215,3 +223,63 @@ def test_full_check_detects_every_filesystem_damage(tmp_path: Path, damage: str)
             marker_uuid=MARKER,
             mode="full",
         )
+
+
+def test_manual_repair_requires_gate_and_clears_it_only_after_full_check(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    _write(source / "data.bin", b"valid")
+    adapter = _adapter()
+    adapter.backup(
+        source_root=source,
+        destination_root=destination,
+        excludes=(),
+        job_id="job-1",
+        marker_uuid=MARKER,
+        run_id=RUN_ID,
+        volume_free_bytes=1_000_000,
+    )
+    with pytest.raises(MirrorRepairNotAllowedError, match="active verification gate"):
+        adapter.repair(
+            source_root=source,
+            destination_root=destination,
+            excludes=(),
+            job_id="job-1",
+            marker_uuid=MARKER,
+            run_id=UUID("33333333-3333-4333-8333-333333333333"),
+            volume_free_bytes=1_000_000,
+        )
+
+    (destination / "data.bin").write_bytes(b"bad!!")
+    with pytest.raises(MirrorVerificationError):
+        adapter.check(
+            destination_root=destination,
+            job_id="job-1",
+            marker_uuid=MARKER,
+            mode="full",
+        )
+    with pytest.raises(MirrorVerificationError, match="gate"):
+        adapter.backup(
+            source_root=source,
+            destination_root=destination,
+            excludes=(),
+            job_id="job-1",
+            marker_uuid=MARKER,
+            run_id=UUID("44444444-4444-4444-8444-444444444444"),
+            volume_free_bytes=1_000_000,
+        )
+
+    repaired = adapter.repair(
+        source_root=source,
+        destination_root=destination,
+        excludes=(),
+        job_id="job-1",
+        marker_uuid=MARKER,
+        run_id=UUID("55555555-5555-4555-8555-555555555555"),
+        volume_free_bytes=1_000_000,
+    )
+    assert repaired.copied_files == 1
+    assert (destination / "data.bin").read_bytes() == b"valid"

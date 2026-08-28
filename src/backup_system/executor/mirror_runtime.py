@@ -62,23 +62,27 @@ def run_mirror_operation(
     _require_distinct_source_disk(config)
 
     def reconcile(context: WindowsDataContext) -> object:
-        result = adapter.backup(
-            source_root=Path(context.source_root),
+        source_root = Path(context.source_root)
+        free_bytes = shutil.disk_usage(destination).free
+        if operation == "repair-mirror":
+            return adapter.repair(
+                source_root=source_root,
+                destination_root=destination,
+                excludes=config.excludes,
+                job_id=config.id,
+                marker_uuid=config.destination.marker_uuid,
+                run_id=run_id,
+                volume_free_bytes=free_bytes,
+            )
+        return adapter.backup(
+            source_root=source_root,
             destination_root=destination,
             excludes=config.excludes,
             job_id=config.id,
             marker_uuid=config.destination.marker_uuid,
             run_id=run_id,
-            volume_free_bytes=shutil.disk_usage(destination).free,
+            volume_free_bytes=free_bytes,
         )
-        if operation == "repair-mirror":
-            adapter.check(
-                destination_root=destination,
-                job_id=config.id,
-                marker_uuid=config.destination.marker_uuid,
-                mode="full",
-            )
-        return result
 
     return windows_job.run(
         config=config,

@@ -16,9 +16,10 @@ from backup_system.executor.mirror_catalog import CatalogEntry, MirrorCatalog
 from backup_system.executor.mirror_plan import (
     CapacityAssessment,
     MirrorPlan,
+    PathKeyProvider,
     PlanAction,
-    PortableWindowsPathKeys,
     ScanResult,
+    WindowsOrdinalPathKeys,
     assess_capacity,
     build_plan,
     scan_tree,
@@ -30,6 +31,10 @@ TEMP_PREFIX = ".bbs-tmp-"
 
 
 class MirrorVerificationError(RuntimeError):
+    pass
+
+
+class MirrorRepairNotAllowedError(RuntimeError):
     pass
 
 
@@ -57,10 +62,11 @@ class MirrorAdapter:
         *,
         files: MirrorFileOperations,
         cancellation: CancellationToken,
+        path_keys: PathKeyProvider | None = None,
     ) -> None:
         self._files = files
         self._cancellation = cancellation
-        self._path_keys = PortableWindowsPathKeys()
+        self._path_keys = path_keys or WindowsOrdinalPathKeys()
 
     def backup(
         self,
@@ -72,19 +78,31 @@ class MirrorAdapter:
         marker_uuid: UUID,
         run_id: UUID,
         volume_free_bytes: int,
+        allow_verification_gate: bool = False,
+        force_copy_all: bool = False,
     ) -> MirrorBackupResult:
         self._cancellation.raise_if_requested()
         source = scan_tree(source_root, excludes=excludes, path_keys=self._path_keys)
         catalog_path = destination_root / CONTROL_DIRECTORY / "catalog.sqlite3"
         with MirrorCatalog(catalog_path, job_id=job_id, marker_uuid=marker_uuid) as catalog:
-            self._recover(destination_root, catalog)
+            if catalog.verification_gate_active() and not allow_verification_gate:
+                raise MirrorVerificationError("mirror verification gate is active")
+            try:
+                self._recover(destination_root, catalog)
+            except MirrorVerificationError:
+                catalog.activate_verification_gate()
+                raise
             destination = scan_tree(
                 destination_root,
                 path_keys=self._path_keys,
                 reserved_root=CONTROL_DIRECTORY,
             )
             entries = catalog.entries()
-            unchanged = _unchanged_keys(source, destination, entries)
+            unchanged = (
+                frozenset()
+                if force_copy_all
+                else _unchanged_keys(source, destination, entries)
+            )
             plan = build_plan(source, destination, unchanged_path_keys=unchanged)
             capacity = assess_capacity(plan, volume_free_bytes=volume_free_bytes)
             _save_plan(destination_root, run_id, plan)
@@ -121,36 +139,80 @@ class MirrorAdapter:
             job_id=job_id,
             marker_uuid=marker_uuid,
         ) as catalog:
-            self._recover(destination_root, catalog)
-            destination = scan_tree(
-                destination_root,
-                path_keys=self._path_keys,
-                reserved_root=CONTROL_DIRECTORY,
-            )
-            entries = catalog.entries()
-            present = {
-                key: value
-                for key, value in entries.items()
-                if value.desired_state == "present"
-            }
-            _verify_metadata(destination, present)
-            selected = _select_for_hash(present, mode)
-            checked_bytes = 0
-            for entry in selected:
-                self._cancellation.raise_if_requested()
-                actual_hash = _hash_file(
-                    destination_root / entry.relative_path, self._cancellation
+            try:
+                self._recover(destination_root, catalog)
+                destination = scan_tree(
+                    destination_root,
+                    path_keys=self._path_keys,
+                    reserved_root=CONTROL_DIRECTORY,
                 )
-                if actual_hash != entry.sha256:
-                    raise MirrorVerificationError(f"mirror content mismatch: {entry.relative_path}")
-                if entry.content_generation is None:
-                    raise MirrorVerificationError("catalog content generation is missing")
-                catalog.mark_verified(
-                    entry.path_key,
-                    content_generation=entry.content_generation,
-                )
-                checked_bytes += entry.size_bytes or 0
+                entries = catalog.entries()
+                present = {
+                    key: value
+                    for key, value in entries.items()
+                    if value.desired_state == "present"
+                }
+                _verify_metadata(destination, present)
+                selected = _select_for_hash(present, mode)
+                checked_bytes = 0
+                for entry in selected:
+                    self._cancellation.raise_if_requested()
+                    actual_hash = _hash_file(
+                        destination_root / entry.relative_path, self._cancellation
+                    )
+                    if actual_hash != entry.sha256:
+                        raise MirrorVerificationError(
+                            f"mirror content mismatch: {entry.relative_path}"
+                        )
+                    if entry.content_generation is None:
+                        raise MirrorVerificationError("catalog content generation is missing")
+                    catalog.mark_verified(
+                        entry.path_key,
+                        content_generation=entry.content_generation,
+                    )
+                    checked_bytes += entry.size_bytes or 0
+            except MirrorVerificationError:
+                catalog.activate_verification_gate()
+                raise
         return MirrorCheckResult(mode, len(selected), checked_bytes, destination.total_bytes)
+
+    def repair(
+        self,
+        *,
+        source_root: Path,
+        destination_root: Path,
+        excludes: tuple[str, ...],
+        job_id: str,
+        marker_uuid: UUID,
+        run_id: UUID,
+        volume_free_bytes: int,
+    ) -> MirrorBackupResult:
+        catalog_path = destination_root / CONTROL_DIRECTORY / "catalog.sqlite3"
+        with MirrorCatalog(catalog_path, job_id=job_id, marker_uuid=marker_uuid) as catalog:
+            if not catalog.verification_gate_active():
+                raise MirrorRepairNotAllowedError(
+                    "repair-mirror requires an active verification gate"
+                )
+        result = self.backup(
+            source_root=source_root,
+            destination_root=destination_root,
+            excludes=excludes,
+            job_id=job_id,
+            marker_uuid=marker_uuid,
+            run_id=run_id,
+            volume_free_bytes=volume_free_bytes,
+            allow_verification_gate=True,
+            force_copy_all=True,
+        )
+        self.check(
+            destination_root=destination_root,
+            job_id=job_id,
+            marker_uuid=marker_uuid,
+            mode="full",
+        )
+        with MirrorCatalog(catalog_path, job_id=job_id, marker_uuid=marker_uuid) as catalog:
+            catalog.clear_verification_gate()
+        return result
 
     def _apply_plan(
         self,
