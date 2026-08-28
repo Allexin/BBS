@@ -1,5 +1,7 @@
 [CmdletBinding()]
-param()
+param(
+    [string]$OutputPath
+)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -18,6 +20,13 @@ $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Pat
 $lockPath = Join-Path $PSScriptRoot 'restic.lock.json'
 $lock = Get-Content -LiteralPath $lockPath -Raw -Encoding UTF8 | ConvertFrom-Json
 $resticPath = Join-Path $projectRoot ".tools\restic-$($lock.version)\restic_$($lock.version)_windows_amd64.exe"
+
+if ([string]::IsNullOrWhiteSpace($OutputPath)) {
+    $OutputPath = Join-Path $projectRoot '.poc-work\stage0\admin-preflight.json'
+} elseif (-not [IO.Path]::IsPathRooted($OutputPath)) {
+    $OutputPath = Join-Path $projectRoot $OutputPath
+}
+$OutputPath = [IO.Path]::GetFullPath($OutputPath)
 
 $resticStatus = 'missing'
 $resticVersion = $null
@@ -77,4 +86,7 @@ $result = [ordered]@{
     next_step = 'Выберите только пустой выделенный тестовый диск; сообщите number, unique_id и букву тестового тома.'
 }
 
-$result | ConvertTo-Json -Depth 8
+$outputDirectory = Split-Path -Parent $OutputPath
+New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
+$result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
+Write-Output "Результат сохранён: $OutputPath"

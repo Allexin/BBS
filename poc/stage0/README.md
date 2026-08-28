@@ -40,8 +40,10 @@ VSS binding требует повышенных прав. Online/offline и moun
 
 ```powershell
 Set-Location S:\BasovBackupSystem\BBS
-.\poc\stage0\admin_preflight.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage0\admin_preflight.ps1
 ```
 
-Скрипт не меняет состояние дисков и выводит JSON. Для следующего шага нужны `number`,
-`unique_id` и буква тома подключённого тестового носителя.
+`Bypass` действует только в запущенном процессе и не меняет системную Execution Policy.
+Скрипт не меняет состояние дисков и сохраняет JSON в игнорируемый файл
+`.poc-work/stage0/admin-preflight.json`. После запуска файл можно исследовать прямо в
+рабочей папке; копировать stdout не требуется.
