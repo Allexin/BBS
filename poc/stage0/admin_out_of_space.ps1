@@ -89,37 +89,19 @@ try {
         throw "restic init failed:`n$($initOutput -join "`n")"
     }
 
-    $stdoutPath = Join-Path $fixtureRoot 'restic-stdout.jsonl'
-    $stderrPath = Join-Path $fixtureRoot 'restic-stderr.txt'
-    $backupProcess = Start-Process -FilePath $resticPath -ArgumentList @(
-        '--repo', $repository,
-        '--insecure-no-password',
-        '--no-cache',
-        'backup', '--json', $sourcePath
-    ) -NoNewWindow -Wait -PassThru -RedirectStandardOutput $stdoutPath -RedirectStandardError $stderrPath
-    $backupExitCode = $backupProcess.ExitCode
-    $stdoutLines = if (Test-Path -LiteralPath $stdoutPath) { @(Get-Content -LiteralPath $stdoutPath -Encoding UTF8) } else { @() }
-    $stderrLines = if (Test-Path -LiteralPath $stderrPath) { @(Get-Content -LiteralPath $stderrPath -Encoding UTF8) } else { @() }
-    $backupOutput = @($stdoutLines) + @($stderrLines)
-    $events = @($backupOutput | ForEach-Object {
-        try { $_ | ConvertFrom-Json -ErrorAction Stop } catch { $null }
-    })
-    $errorEvents = @($events | Where-Object { $_.message_type -eq 'error' })
-    $combined = $backupOutput -join "`n"
-    $spaceText = $combined -match '(?i)(not enough space|no space left|disk full|insufficient disk space)'
-    $classified = $errorEvents.Count -gt 0 -and $spaceText
-    if ($backupExitCode -eq 0) {
-        throw 'restic backup unexpectedly succeeded on the constrained VHD.'
+    $helperPath = Join-Path $PSScriptRoot 'restic_out_of_space.py'
+    $helperOutput = @(& python $helperPath --restic $resticPath --repository $repository --source $sourcePath 2>&1)
+    if ($LASTEXITCODE -ne 0) {
+        throw "out-of-space helper failed:`n$($helperOutput -join "`n")"
     }
-    if (-not $classified) {
-        throw "out-of-space was not machine-classifiable; exit=$backupExitCode error_events=$($errorEvents.Count)"
-    }
-
+    $probe = ($helperOutput -join "`n") | ConvertFrom-Json
     $result.status = 'passed'
-    $result.restic_exit_code = $backupExitCode
-    $result.structured_error_events = $errorEvents.Count
-    $result.out_of_space_text_present = $spaceText
-    $result.machine_classifiable = $classified
+    $result.restic_exit_code = $probe.restic_exit_code
+    $result.structured_error_events = $probe.structured_error_events_before_interrupt
+    $result.diagnostic_stream = $probe.diagnostic_stream
+    $result.pinned_diagnostic_matched = $probe.pinned_diagnostic_matched
+    $result.cooperative_interrupt_sent = $probe.cooperative_interrupt_sent
+    $result.seconds_to_classification = $probe.seconds_to_classification
 } catch {
     $result.error = $_.Exception.Message
     throw
