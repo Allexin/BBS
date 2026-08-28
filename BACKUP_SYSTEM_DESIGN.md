@@ -2589,12 +2589,15 @@ CREATE TABLE run_events (
 
 CREATE TABLE notifications (
     notification_id TEXT PRIMARY KEY,
+    deduplication_key TEXT NOT NULL UNIQUE,
     run_id TEXT REFERENCES runs(run_id),
     kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
     state TEXT NOT NULL,
     attempts INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
     created_at TEXT NOT NULL,
+    next_attempt_at TEXT,
     sent_at TEXT
 );
 

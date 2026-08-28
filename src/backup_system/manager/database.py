@@ -7,7 +7,7 @@ from pathlib import Path
 
 from backup_system.common.time import utc_now
 
-LATEST_SCHEMA_VERSION = 1
+LATEST_SCHEMA_VERSION = 2
 
 _SCHEMA_V1 = """
 CREATE TABLE jobs (
@@ -164,6 +164,32 @@ CREATE TABLE backup_metrics (
 );
 """
 
+_SCHEMA_V2 = """
+ALTER TABLE notifications RENAME TO notifications_v1;
+CREATE TABLE notifications (
+    notification_id TEXT PRIMARY KEY,
+    deduplication_key TEXT NOT NULL UNIQUE,
+    run_id TEXT REFERENCES runs(run_id),
+    kind TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    state TEXT NOT NULL,
+    attempts INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    next_attempt_at TEXT,
+    sent_at TEXT
+);
+INSERT INTO notifications(
+    notification_id, deduplication_key, run_id, kind, payload_json, state,
+    attempts, last_error, created_at, next_attempt_at, sent_at
+)
+SELECT notification_id, 'legacy:' || notification_id, run_id, kind, '{}', state,
+       attempts, last_error, created_at,
+       CASE WHEN state = 'pending' THEN created_at ELSE NULL END, sent_at
+FROM notifications_v1;
+DROP TABLE notifications_v1;
+"""
+
 
 class SchemaVersionError(RuntimeError):
     """The database schema is newer than this application understands."""
@@ -207,6 +233,12 @@ def _migrate(connection: sqlite3.Connection) -> None:
             connection.execute(
                 "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (1, utc_now().isoformat()),
+            )
+        if 2 not in versions:
+            _execute_script_atomically(connection, _SCHEMA_V2)
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (2, utc_now().isoformat()),
             )
 
 

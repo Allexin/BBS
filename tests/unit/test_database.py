@@ -35,10 +35,13 @@ def test_database_is_configured_and_migrated_idempotently(tmp_path: Path) -> Non
         assert tables == EXPECTED_TABLES
         assert connection.execute("PRAGMA foreign_keys").fetchone() == (1,)
         assert connection.execute("PRAGMA journal_mode").fetchone() == ("wal",)
-        assert connection.execute("SELECT version FROM schema_migrations").fetchall() == [(1,)]
+        assert connection.execute("SELECT version FROM schema_migrations").fetchall() == [
+            (1,),
+            (2,),
+        ]
 
     with open_manager_database(path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone() == (1,)
+        assert connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone() == (2,)
 
 
 def test_foreign_keys_and_unfinished_operation_uniqueness_are_enforced(tmp_path: Path) -> None:
@@ -64,6 +67,12 @@ def test_foreign_keys_and_unfinished_operation_uniqueness_are_enforced(tmp_path:
                     operation_id, deduplication_key, job_id, kind, trigger_source, queued_at, state
                 ) VALUES ('op-2', 'dedup-2', 'data', 'backup', 'manual', 'now', 'running')"""
             )
+        with pytest.raises(sqlite3.IntegrityError):
+            connection.execute(
+                """INSERT INTO notifications(
+                    notification_id, deduplication_key, kind, payload_json, state, created_at
+                ) VALUES ('notification', NULL, 'alert', '{}', 'pending', 'now')"""
+            )
 
 
 def test_newer_schema_is_rejected(tmp_path: Path) -> None:
@@ -72,7 +81,7 @@ def test_newer_schema_is_rejected(tmp_path: Path) -> None:
     connection.execute(
         "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
     )
-    connection.execute("INSERT INTO schema_migrations VALUES (2, 'future')")
+    connection.execute("INSERT INTO schema_migrations VALUES (3, 'future')")
     connection.commit()
     connection.close()
 
