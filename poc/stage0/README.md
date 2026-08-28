@@ -28,6 +28,16 @@ python poc/stage0/restic_local.py
 включая Unicode и путь длиннее 260 символов, оставляет один файл открытым во время
 backup, выполняет `check --read-data`, `restore --verify` и независимо сверяет SHA-256.
 
+Fail-fast и cooperative interruption проверяются отдельно:
+
+```powershell
+python poc/stage0/restic_fail_fast.py
+```
+
+Probe удерживает синтетический файл без file sharing, читает JSON одновременно из
+stdout и stderr restic, прерывает процесс при первом source read error, выполняет
+`check --read-data` и подтверждает отсутствие опубликованного snapshot.
+
 ## Привилегированные и аппаратные проверки
 
 VSS binding требует повышенных прав. Online/offline и mount-point проверки будут

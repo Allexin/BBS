@@ -17,8 +17,8 @@
 | Стабильный namespace через VSS | Пройдено: VSS device prefix отсутствует |
 | Online/offline тестового диска | Пройдено через Windows Storage cmdlet |
 | Прямой Windows Storage API и восстановление mount point | Ожидает отдельного Python PoC |
-| restic fail-fast | Ожидает отдельного сценария |
-| Принудительное прерывание и recovery | Ожидает отдельного сценария |
+| restic fail-fast | Пройдено для source read error |
+| Принудительное прерывание и recovery | Пройдено для restic repository |
 
 В результаты не включаются имена машины, серийные номера, реальные пути и данные.
 
@@ -29,3 +29,10 @@
 через VSS, отсутствие нового VSS orphan, стабильный restic namespace, полный check,
 restore с независимой сверкой хешей и цикл offline/online выделенного тестового диска.
 После теста диск вернулся online и сохранил состояние Healthy.
+
+Fail-fast probe получил машинно-разбираемый source read error во время `archival` и
+немедленно отправил cooperative interrupt. Restic завершился с exit code 130, snapshot
+не был опубликован, последующий полный check репозитория прошёл. Структурированная
+ошибка restic 0.19.1 поступила через stderr: snapshot adapter обязан асинхронно читать
+и классифицировать оба потока процесса. Repository write/I/O и out-of-space требуют
+отдельных fault-injection проверок.
