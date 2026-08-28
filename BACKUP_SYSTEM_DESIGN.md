@@ -2718,6 +2718,15 @@ subset cursor начинает новый круг с `1/4`, а все теку�
 - `run` с job operation
   `backup|check|prune|restore|restore-test|repair-mirror|recover`;
 - `cancel-current` без `job_id` и operation;
+- `queue-remove` с единственным `operation_id` UUID4.
+
+Для `run/check` обязательно поле `mode: subset|full`. Для `run/restore` обязательны
+`version`, относительный `path` и абсолютный локальный `target`; у остальных run
+operations эти поля запрещены. Размер command file ограничен 64 KiB. Новая команда
+в `incoming` принимается не позднее 24 часов после `created_at`; допустимое опережение
+локальных часов клиента — не более 5 минут. После успешного перемещения в `accepted`
+возраст больше не проверяется: такая команда должна идемпотентно завершить обработку
+после restart.
 
 `backupctl` не принимает произвольную executable, restic arguments, absolute source
 path, repository path или mount point. Restore-команда является единственным
@@ -2726,6 +2735,14 @@ selection и один абсолютный локальный parent target по
 входного файла равно `<command_id>.json`. Manager проверяет совпадение имени и
 payload, размер файла, schema version, UUID, возраст команды и allowlist полей;
 executor повторно проверяет filesystem identities перед записью.
+
+Manager сначала атомарно перемещает полностью провалидированный файл
+`incoming → accepted`, затем применяет mutation к SQLite и только после commit
+перемещает файл `accepted → completed`. Crash между commit и последним перемещением
+приводит к повторной доставке с тем же `command_id`; mutation дедуплицируется по нему.
+Невалидный файл перемещается в `rejected` без изменения SQLite. Повторная доставка
+имени, уже присутствующего в lifecycle-каталогах, также сохраняется в `rejected` с
+уникальным суффиксом и не перезаписывает первый command artifact.
 
 ## 36. Публичные JSON-контракты
 
