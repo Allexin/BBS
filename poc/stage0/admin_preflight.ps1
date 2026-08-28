@@ -13,7 +13,7 @@ function Test-IsAdministrator {
 }
 
 if (-not (Test-IsAdministrator)) {
-    throw 'Запустите PowerShell от имени администратора.'
+    throw 'Run PowerShell as Administrator.'
 }
 
 $projectRoot = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).Path
@@ -33,7 +33,7 @@ $resticVersion = $null
 if (Test-Path -LiteralPath $resticPath -PathType Leaf) {
     $actualHash = (Get-FileHash -LiteralPath $resticPath -Algorithm SHA256).Hash.ToLowerInvariant()
     if ($actualHash -ne $lock.executable_sha256) {
-        throw "SHA-256 restic.exe не совпадает с restic.lock.json: $actualHash"
+        throw "restic.exe SHA-256 does not match restic.lock.json: $actualHash"
     }
     $resticStatus = 'verified'
     $resticVersion = (& $resticPath version) -join "`n"
@@ -83,10 +83,10 @@ $result = [ordered]@{
         path = $resticPath
     }
     disks = $disks
-    next_step = 'Выберите только пустой выделенный тестовый диск; сообщите number, unique_id и букву тестового тома.'
+    next_step = 'Select only an empty dedicated test disk. Record its number, unique_id, and volume drive letter.'
 }
 
 $outputDirectory = Split-Path -Parent $OutputPath
 New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $OutputPath -Encoding UTF8
-Write-Output "Результат сохранён: $OutputPath"
+Write-Output "Result saved to: $OutputPath"
