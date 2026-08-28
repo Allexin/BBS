@@ -18,7 +18,7 @@
 | Online/offline тестового диска | Пройдено через Windows Storage cmdlet |
 | Прямой Windows Storage API и восстановление mount point | Пройдено |
 | restic fail-fast | Пройдено для source read error |
-| restic out-of-space fail-fast | Требует ADR: классифицировано по stderr, JSON error отсутствует |
+| restic out-of-space fail-fast | Пройдено по принятому ADR 0001 |
 | Принудительное прерывание и recovery | Пройдено для restic repository |
 
 В результаты не включаются имена машины, серийные номера, реальные пути и данные.
@@ -48,5 +48,5 @@ online через `DeviceIoControl`, затем назначил дополни�
 Out-of-space probe на изолированном VHDX классифицировал первую точную диагностику
 stderr за 1.512 секунды и отправил cooperative interrupt. Restic завершился с exit
 code 130, временный VHDX был удалён. До прерывания restic не выдал структурированного
-JSON error event, поэтому требование design doc формально не выполнено и snapshot
-adapter остаётся заблокированным до решения отдельного ADR.
+JSON error event. ADR 0001 принят: для закреплённой версии разрешён точный,
+покрытый integration-тестом классификатор stderr diagnostic.

@@ -1897,17 +1897,22 @@ restic --repository <repo> <auth-args>
 
 Где `<auth-args>` равно `--insecure-no-password` либо `--password-file <temp-secret-file>` согласно config. То же правило применяется к `forget`, `check`, `prune`, `restore`, `snapshots` и другим restic operations.
 
-Snapshot adapter обязан обеспечить fail-fast поверх restic. Он читает structured
-JSON output асинхронно и при первом событии, однозначно классифицированном как source
-read error, repository write/I/O error или out-of-space, немедленно инициирует
+Snapshot adapter обязан обеспечить fail-fast поверх restic. Он асинхронно читает
+stdout и stderr. Основным контрактом являются structured JSON events. Для точной
+поддерживаемой major/minor версии restic дополнительно разрешены только явно
+зафиксированные в принятом ADR и покрытые integration-тестами stderr diagnostics.
+При первом событии или diagnostic, однозначно классифицированном как source read
+error, repository write/I/O error или out-of-space, adapter немедленно инициирует
 cooperative termination restic и переходит к cleanup/offline. Он не ждёт окончания
 полного обхода source. Такой run получает `failed`; retention не запускается, даже
 если restic успел записать частичный snapshot.
 
 PoC обязан подтвердить, что закреплённая версия restic выдаёт эти классы ошибок в
-машинно-разбираемом виде достаточно рано. Если надёжная ранняя классификация
-невозможна, snapshot adapter не считается готовым: молча ослаблять fail-fast до
-«дождаться exit code после полного обхода» запрещено.
+машинно-разбираемом виде достаточно рано. Текстовый классификатор обязан сопоставлять
+точные проверенные diagnostics и блокирует обновление restic до повторного
+compatibility test; общий поиск подстрок и локализованный shell output запрещены. Если
+надёжная ранняя классификация невозможна, snapshot adapter не считается готовым:
+молча ослаблять fail-fast до «дождаться exit code после полного обхода» запрещено.
 
 После успешного создания snapshot тот же backup-run применяет retention, ограничивая
 выборку tag и host конкретной job:
