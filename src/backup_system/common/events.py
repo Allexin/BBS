@@ -46,6 +46,18 @@ class SnapshotCreated(EventBase):
     bytes_added: int = Field(ge=0)
 
 
+class RestoreTargetReady(EventBase):
+    event: Literal["restore_target_ready"]
+    result_path: str
+
+
+class RestoreCompleted(EventBase):
+    event: Literal["restore_completed"]
+    result_path: str
+    files_restored: int = Field(ge=0)
+    logical_bytes: int = Field(ge=0)
+
+
 class DiskOfflineConfirmed(EventBase):
     event: Literal["disk_offline_confirmed"]
 
@@ -76,6 +88,8 @@ KnownExecutorEvent = Annotated[
     | StageChanged
     | Progress
     | SnapshotCreated
+    | RestoreTargetReady
+    | RestoreCompleted
     | DiskOfflineConfirmed
     | DiskOfflineFailed
     | SmartObserved
@@ -101,6 +115,8 @@ def parse_executor_event(value: dict[str, Any]) -> KnownExecutorEvent | UnknownE
         "stage_changed",
         "progress",
         "snapshot_created",
+        "restore_target_ready",
+        "restore_completed",
         "disk_offline_confirmed",
         "disk_offline_failed",
         "smart_observed",

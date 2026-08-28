@@ -6,7 +6,7 @@ import hashlib
 import json
 import os
 import shutil
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -40,8 +40,14 @@ class RestoreResult:
 
 
 class RestoreTarget:
-    def __init__(self, cancellation: CancellationToken) -> None:
+    def __init__(
+        self,
+        cancellation: CancellationToken,
+        *,
+        ready_sink: Callable[[Path], None] | None = None,
+    ) -> None:
         self._cancellation = cancellation
+        self._ready_sink = ready_sink or (lambda path: None)
 
     def create(
         self,
@@ -77,6 +83,7 @@ class RestoreTarget:
             marker.unlink(missing_ok=True)
             result.rmdir()
             raise
+        self._ready_sink(result)
         return result
 
     def verify_and_complete(

@@ -34,16 +34,18 @@ class SnapshotRestore:
         secret_directory: Path,
         stage_sink: Callable[[str], None] | None = None,
         auth_factory: ResticAuthFactory = restic_auth_arguments,
+        ready_sink: Callable[[Path], None] | None = None,
     ) -> None:
         self._runner = runner
         self._cancellation = cancellation
         self._secret_directory = secret_directory
         self._stage_sink = stage_sink or (lambda stage: None)
         self._auth_factory = auth_factory
+        self._ready_sink = ready_sink
 
     def run(self, config: SnapshotJobConfig, request: RestoreRequest) -> RestoreResult:
         self._runner.verify_version()
-        target = RestoreTarget(self._cancellation)
+        target = RestoreTarget(self._cancellation, ready_sink=self._ready_sink)
         result = target.create(
             request,
             forbidden_roots=[Path(config.repository.path), Path(config.source.path)],

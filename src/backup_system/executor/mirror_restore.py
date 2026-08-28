@@ -29,10 +29,12 @@ class MirrorRestore:
         cancellation: CancellationToken,
         copy_file: RestoreFileCopier,
         stage_sink: Callable[[str], None] | None = None,
+        ready_sink: Callable[[Path], None] | None = None,
     ) -> None:
         self._cancellation = cancellation
         self._copy_file = copy_file
         self._stage_sink = stage_sink or (lambda stage: None)
+        self._ready_sink = ready_sink
 
     def run(
         self,
@@ -59,7 +61,7 @@ class MirrorRestore:
             )
             for entry in entries
         )
-        target = RestoreTarget(self._cancellation)
+        target = RestoreTarget(self._cancellation, ready_sink=self._ready_sink)
         result = target.create(
             request,
             forbidden_roots=[destination_root, destination_root / ".backup-system", source_root],
