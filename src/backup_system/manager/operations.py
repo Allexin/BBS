@@ -12,6 +12,7 @@ from uuid import UUID
 from backup_system.common.ids import new_operation_id, new_run_id
 from backup_system.common.time import require_aware, utc_now
 from backup_system.manager.notifications import NotificationRepository
+from backup_system.manager.safety import SafetyLatchRepository
 
 
 class OperationState(StrEnum):
@@ -211,11 +212,21 @@ class OperationsRepository:
             ).fetchone():
                 self._connection.rollback()
                 return None
-            row = self._connection.execute(
-                """SELECT operation_id, job_id, kind, mode
-                FROM operations WHERE state = ? ORDER BY queued_at, rowid LIMIT 1""",
-                (OperationState.QUEUED,),
-            ).fetchone()
+            latch = SafetyLatchRepository(self._connection).active()
+            if latch is None:
+                row = self._connection.execute(
+                    """SELECT operation_id, job_id, kind, mode
+                    FROM operations WHERE state = ? ORDER BY queued_at, rowid LIMIT 1""",
+                    (OperationState.QUEUED,),
+                ).fetchone()
+            else:
+                row = self._connection.execute(
+                    """SELECT operation_id, job_id, kind, mode FROM operations
+                    WHERE state = ? AND job_id = ? AND kind = 'recover'
+                        AND trigger_source = 'manual'
+                    ORDER BY queued_at, rowid LIMIT 1""",
+                    (OperationState.QUEUED, latch.job_id),
+                ).fetchone()
             if row is None:
                 self._connection.rollback()
                 return None
@@ -337,8 +348,10 @@ class OperationsRepository:
             raise ValueError("bytes_added cannot be negative")
         with self._connection:
             row = self._connection.execute(
-                """SELECT operation_id, deadline_at, deadline_exceeded_at
-                FROM runs WHERE run_id = ? AND state = ?""",
+                """SELECT runs.operation_id, runs.deadline_at, runs.deadline_exceeded_at,
+                    runs.job_id, operations.kind, operations.trigger_source
+                FROM runs JOIN operations ON operations.operation_id = runs.operation_id
+                WHERE runs.run_id = ? AND runs.state = ?""",
                 (str(run_id), RunState.RUNNING),
             ).fetchone()
             if row is None:
@@ -421,15 +434,25 @@ class OperationsRepository:
                         payload={"job": display_name},
                         created_at=completed_time,
                     )
+            if (
+                result in {RunResult.SUCCESS, RunResult.WARNING}
+                and disk_offline_confirmed
+                and str(row[4]) == "recover"
+                and str(row[5]) == "manual"
+            ):
+                SafetyLatchRepository(self._connection).clear_disk_lifecycle_in_transaction(
+                    job_id=str(row[3]), cleared_at=completed_time
+                )
 
     def reconcile_startup(self, *, reconciled_at: datetime | None = None) -> StartupReconciliation:
         timestamp = require_aware(reconciled_at or utc_now()).isoformat()
         with self._connection:
             rows = self._connection.execute(
-                "SELECT run_id, operation_id FROM runs WHERE state = ? ORDER BY started_at",
+                """SELECT run_id, operation_id, job_id, disk_offline_confirmed
+                FROM runs WHERE state = ? ORDER BY started_at""",
                 (RunState.RUNNING,),
             ).fetchall()
-            for run_value, operation_value in rows:
+            for run_value, operation_value, job_value, offline_value in rows:
                 run_id = UUID(str(run_value))
                 cursor = self._connection.execute(
                     """UPDATE runs SET state = ?, result = ?, finished_at = ?
@@ -467,6 +490,13 @@ class OperationsRepository:
                         "timestamp": timestamp,
                     },
                 )
+                if not bool(offline_value):
+                    SafetyLatchRepository(self._connection).set_disk_lifecycle_in_transaction(
+                        job_id=str(job_value),
+                        source_run_id=run_id,
+                        reason="manager_startup_interrupted_without_confirmed_offline",
+                        created_at=datetime.fromisoformat(timestamp),
+                    )
             queued_rows = self._connection.execute(
                 "SELECT operation_id FROM operations WHERE state = ? ORDER BY queued_at, rowid",
                 (OperationState.QUEUED,),

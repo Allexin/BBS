@@ -15,6 +15,7 @@ from backup_system.manager.operations import (
     RunResult,
     StateTransitionError,
 )
+from backup_system.manager.safety import SafetyLatchRepository
 
 
 def _repository(path: Path) -> tuple[OperationsRepository, sqlite3.Connection]:
@@ -227,9 +228,75 @@ def test_restart_reconciles_running_and_discards_queued_tail(tmp_path: Path) -> 
             "SELECT state, result FROM runs WHERE run_id = ?", (str(claimed.run_id),)
         ).fetchone()
         assert run == ("finished", RunResult.INTERRUPTED)
+        latch = SafetyLatchRepository(connection).active()
+        assert latch is not None
+        assert latch.job_id == "data" and latch.source_run_id == claimed.run_id
         repeated = restarted.reconcile_startup()
         assert repeated.interrupted_run_ids == ()
         assert repeated.discarded_operation_ids == ()
+    finally:
+        connection.close()
+
+
+def test_safety_latch_allows_only_successful_manual_recover(tmp_path: Path) -> None:
+    path = tmp_path / "manager.sqlite3"
+    repository, connection = _repository(path)
+    repository.enqueue(
+        deduplication_key="run:unsafe",
+        job_id="data",
+        kind="backup",
+        trigger_source="scheduled",
+    )
+    unsafe_run = repository.claim_next()
+    assert unsafe_run is not None
+    connection.close()
+
+    connection = open_manager_database(path)
+    repository = OperationsRepository(connection)
+    try:
+        repository.reconcile_startup()
+        blocked = repository.enqueue(
+            deduplication_key="run:blocked",
+            job_id="data",
+            kind="backup",
+            trigger_source="scheduled",
+        )
+        assert repository.claim_next() is None
+
+        repository.enqueue(
+            deduplication_key="recover:first",
+            job_id="data",
+            kind="recover",
+            trigger_source="manual",
+        )
+        failed_recover = repository.claim_next()
+        assert failed_recover is not None and failed_recover.kind == "recover"
+        repository.finish_run(
+            failed_recover.run_id,
+            result=RunResult.FAILED,
+            exit_code=1,
+            disk_offline_confirmed=True,
+        )
+        assert SafetyLatchRepository(connection).active() is not None
+        assert repository.claim_next() is None
+
+        repository.enqueue(
+            deduplication_key="recover:second",
+            job_id="data",
+            kind="recover",
+            trigger_source="manual",
+        )
+        successful_recover = repository.claim_next()
+        assert successful_recover is not None and successful_recover.kind == "recover"
+        repository.finish_run(
+            successful_recover.run_id,
+            result=RunResult.SUCCESS,
+            exit_code=0,
+            disk_offline_confirmed=True,
+        )
+        assert SafetyLatchRepository(connection).active() is None
+        resumed = repository.claim_next()
+        assert resumed is not None and resumed.operation_id == blocked.operation_id
     finally:
         connection.close()
 
