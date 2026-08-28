@@ -214,7 +214,8 @@ def main() -> int:
         raise RuntimeError("test disk must initially be online")
 
     guid = volume_guid(drive)
-    marker = Path(f"{drive}:\\bbs-stage0-api-marker.txt")
+    marker = Path(f"{drive}:\\bbs-stage0-poc\\api-marker.txt")
+    marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text("direct storage api probe", encoding="ascii")
     mount_created = False
     offline_observed = False
