@@ -1819,8 +1819,9 @@ Manual operation имеет UUID команды. Уникальный индек
 Отдельного scheduler pause-state нет. При получении SCM stop manager:
 
 1. перестаёт принимать cron triggers и новые spool-команды;
-2. транзакционно переводит все `queued` operations в `cancelled` с причиной
-   `service_stopping`; их cycle phase не продвигается;
+2. транзакционно переводит все `queued` operations в
+   `discarded_on_service_stop` с причиной `service_stopping`; их cycle phase не
+   продвигается;
 3. если executor работает, посылает ему cooperative cancel;
 4. продолжает принимать события, пока executor выполняет adapter cleanup и возврат
    backup-диска offline;

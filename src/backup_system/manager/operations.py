@@ -116,6 +116,31 @@ class OperationsRepository:
         scheduled_at: datetime | None = None,
         queued_at: datetime | None = None,
     ) -> EnqueueResult:
+        with self._connection:
+            return self.enqueue_in_transaction(
+                deduplication_key=deduplication_key,
+                job_id=job_id,
+                kind=kind,
+                trigger_source=trigger_source,
+                mode=mode,
+                request=request,
+                scheduled_at=scheduled_at,
+                queued_at=queued_at,
+            )
+
+    def enqueue_in_transaction(
+        self,
+        *,
+        deduplication_key: str,
+        job_id: str,
+        kind: str,
+        trigger_source: str,
+        mode: str | None = None,
+        request: dict[str, str] | None = None,
+        scheduled_at: datetime | None = None,
+        queued_at: datetime | None = None,
+    ) -> EnqueueResult:
+        """Enqueue without commit; the caller owns the surrounding transaction."""
         if not deduplication_key:
             raise ValueError("deduplication key must not be empty")
         operation_id = new_operation_id()
@@ -127,27 +152,26 @@ class OperationsRepository:
             else None
         )
         try:
-            with self._connection:
-                self._connection.execute(
-                    """
-                    INSERT INTO operations(
-                        operation_id, deduplication_key, job_id, kind, mode, request_json,
-                        trigger_source, scheduled_at, queued_at, state
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        str(operation_id),
-                        deduplication_key,
-                        job_id,
-                        kind,
-                        mode,
-                        request_json,
-                        trigger_source,
-                        scheduled,
-                        queued,
-                        OperationState.QUEUED,
-                    ),
-                )
+            self._connection.execute(
+                """
+                INSERT INTO operations(
+                    operation_id, deduplication_key, job_id, kind, mode, request_json,
+                    trigger_source, scheduled_at, queued_at, state
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    str(operation_id),
+                    deduplication_key,
+                    job_id,
+                    kind,
+                    mode,
+                    request_json,
+                    trigger_source,
+                    scheduled,
+                    queued,
+                    OperationState.QUEUED,
+                ),
+            )
         except sqlite3.IntegrityError:
             duplicate = self._connection.execute(
                 "SELECT operation_id FROM operations WHERE deduplication_key = ?",
