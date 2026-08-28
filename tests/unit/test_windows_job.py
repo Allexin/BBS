@@ -8,6 +8,7 @@ import pytest
 
 from backup_system.common.config import (
     DiskConfig,
+    MaintenanceJobConfig,
     MirrorJobConfig,
     SmartConfig,
     SnapshotJobConfig,
@@ -243,6 +244,33 @@ def test_destination_only_operation_skips_source_snapshot() -> None:
                 VolumeObservation("volume", r"C:\BackupVolumes\primary", True),
             ),
         ),
+        "offline",
+        "unlock",
+    ]
+
+
+def test_repository_operation_uses_disk_lifecycle_without_source_snapshot() -> None:
+    calls: list[object] = []
+    owner = _snapshot()
+    config = MaintenanceJobConfig.model_validate(
+        {
+            "id": "job-maintenance",
+            "kind": "maintenance",
+            "display_name": "Maintenance",
+            "repository_owner_job_id": owner.id,
+            "repository": owner.repository.model_dump(),
+            "disk": owner.disk.model_dump(),
+        }
+    )
+    result = _runtime(calls).run_repository(
+        config=config,
+        smart_config=_smart_config(),
+        adapter=lambda volume: calls.append(("prune", volume)) or "done",
+    )
+    assert result.value == "done"
+    assert not any(isinstance(value, tuple) and value[0] == "snapshot" for value in calls)
+    assert calls[-3:] == [
+        ("prune", VolumeObservation("volume", r"C:\BackupVolumes\primary", True)),
         "offline",
         "unlock",
     ]

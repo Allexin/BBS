@@ -15,7 +15,7 @@ def test_data_operation_emits_normalized_run_envelope() -> None:
     code = _execute_operation(
         run_id=RUN_ID,
         job_id="job-1",
-        operation=lambda token, smart_sink: calls.append(token),
+        operation=lambda token, smart_sink, event_sink: calls.append(token),
         input_stream=io.BytesIO(b""),
         output_stream=output,
     )

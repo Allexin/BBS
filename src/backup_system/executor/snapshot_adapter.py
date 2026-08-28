@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
@@ -25,6 +25,14 @@ class SnapshotAdapterError(RuntimeError):
 
 
 class SnapshotVerificationRequired(SnapshotAdapterError):
+    pass
+
+
+class SnapshotPruneWarning(SnapshotAdapterError):
+    pass
+
+
+class SnapshotCursorResetWarning(SnapshotAdapterError):
     pass
 
 
@@ -56,16 +64,21 @@ class SnapshotAdapter:
         runner: ResticRunner,
         states: SnapshotStateStore,
         secret_directory: Path,
+        stage_sink: Callable[[str], None] | None = None,
+        snapshot_sink: Callable[[str, int], None] | None = None,
     ) -> None:
         self._runner = runner
         self._states = states
         self._secret_directory = secret_directory
+        self._stage_sink = stage_sink or (lambda stage: None)
+        self._snapshot_sink = snapshot_sink or (lambda snapshot_id, bytes_added: None)
 
     def backup(self, config: SnapshotJobConfig, *, source_root: Path) -> SnapshotBackupResult:
         loaded = self._load(config)
         if loaded.state.verification_gate:
             raise SnapshotVerificationRequired("snapshot verification gate blocks backup")
         self._runner.verify_version()
+        self._stage_sink("backing_up")
         with self._auth(config) as base, _exclude_file(
             config.excludes, self._secret_directory
         ) as exclude_file:
@@ -85,6 +98,8 @@ class SnapshotAdapter:
                 config,
             )
             snapshot_id, bytes_added = _backup_summary(result.events)
+            self._snapshot_sink(snapshot_id, bytes_added)
+            self._stage_sink("retention")
             retention = _retention_arguments(config.retention)
             self._run(
                 [
@@ -105,6 +120,7 @@ class SnapshotAdapter:
     def check(self, config: SnapshotJobConfig, *, mode: str) -> SnapshotCheckResult:
         loaded = self._load(config)
         self._runner.verify_version()
+        self._stage_sink("verifying")
         arguments = ["check", "--json"]
         part: int | None = None
         if mode == "subset":
@@ -123,6 +139,8 @@ class SnapshotAdapter:
             )
             raise
         self._states.complete_check(config.id, loaded.state, mode=mode)
+        if loaded.cursor_reset:
+            raise SnapshotCursorResetWarning("snapshot scrub cursor was reset")
         return SnapshotCheckResult(
             mode,
             part,
@@ -131,11 +149,18 @@ class SnapshotAdapter:
         )
 
     def prune(self, config: MaintenanceJobConfig) -> None:
-        self._runner.verify_version()
-        with restic_auth_arguments(
-            config.repository.encryption, self._secret_directory
-        ) as auth:
-            self._run(["--repository", config.repository.path, *auth, "prune", "--json"], config)
+        try:
+            self._runner.verify_version()
+            self._stage_sink("retention")
+            with restic_auth_arguments(
+                config.repository.encryption, self._secret_directory
+            ) as auth:
+                self._run(
+                    ["--repository", config.repository.path, *auth, "prune", "--json"],
+                    config,
+                )
+        except ResticProcessError as error:
+            raise SnapshotPruneWarning("restic prune did not complete") from error
 
     def _snapshot_ids(
         self, base: Sequence[str], config: SnapshotJobConfig

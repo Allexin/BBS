@@ -7,6 +7,8 @@ from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.executor.cancellation import CancellationRequested
 from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
 from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
+from backup_system.executor.restic_process import ResticProcessError
+from backup_system.executor.snapshot_adapter import SnapshotCursorResetWarning, SnapshotPruneWarning
 
 RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
 NOW = datetime(2026, 1, 2, 3, 4, tzinfo=UTC)
@@ -86,3 +88,27 @@ def test_operation_failure_preserves_confirmed_offline_independently() -> None:
     assert events[-1]["result"] == "failed"
     assert events[-1]["disk_offline_confirmed"] is True
     assert outcome.exit_code == ExecutorExitCode.INTERNAL_ERROR
+
+
+def test_restic_source_error_maps_to_stable_contract() -> None:
+    events, outcome = _run(
+        lambda: (_ for _ in ()).throw(ResticProcessError("source_read_error", "private path"))
+    )
+    assert events[-1]["result"] == "failed"
+    assert outcome.exit_code == ExecutorExitCode.SOURCE_READ_ERROR
+    assert "private" not in json.dumps(events)
+
+
+def test_prune_failure_is_warning() -> None:
+    events, outcome = _run(
+        lambda: (_ for _ in ()).throw(SnapshotPruneWarning("maintenance failed"))
+    )
+    assert events[-1]["result"] == "warning"
+    assert outcome.exit_code == ExecutorExitCode.SUCCESS_WITH_WARNING
+
+
+def test_cursor_reset_is_warning() -> None:
+    _, outcome = _run(
+        lambda: (_ for _ in ()).throw(SnapshotCursorResetWarning("cursor reset"))
+    )
+    assert outcome.result == "warning"

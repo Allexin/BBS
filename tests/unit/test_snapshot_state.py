@@ -12,6 +12,7 @@ def test_subset_cursor_advances_only_when_committed(tmp_path: Path) -> None:
     store = _store(tmp_path)
     loaded = store.load("data", subset_parts=4)
     assert loaded.state.next_subset_part == 1
+    assert loaded.cursor_reset is True
 
     unchanged = store.load("data", subset_parts=4)
     assert unchanged.state.next_subset_part == 1

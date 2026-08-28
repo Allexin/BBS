@@ -8,7 +8,12 @@ from pathlib import PureWindowsPath
 from typing import Protocol, TypeVar
 from uuid import UUID
 
-from backup_system.common.config import MirrorJobConfig, SmartConfig, SnapshotJobConfig
+from backup_system.common.config import (
+    MaintenanceJobConfig,
+    MirrorJobConfig,
+    SmartConfig,
+    SnapshotJobConfig,
+)
 from backup_system.executor.coordinator import ExecutorWindowsCoordinator, ExecutorWindowsResult
 from backup_system.executor.disk_control import VolumeObservation
 from backup_system.executor.lifecycle import MarkerExpectation
@@ -81,6 +86,23 @@ class ExecutorWindowsJob:
             action=lambda volume: adapter(
                 WindowsDataContext(PureWindowsPath(config.source.path), volume)
             ),
+        )
+
+    def run_repository(
+        self,
+        *,
+        config: MaintenanceJobConfig,
+        smart_config: SmartConfig,
+        adapter: Callable[[VolumeObservation], T],
+    ) -> ExecutorWindowsResult:
+        return self._coordinator.run(
+            disk=config.disk,
+            marker=MarkerExpectation(
+                file=config.repository.marker_file,
+                marker_uuid=config.repository.marker_uuid,
+            ),
+            smart_config=smart_config,
+            action=adapter,
         )
 
 

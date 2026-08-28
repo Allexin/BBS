@@ -130,3 +130,10 @@ def test_only_successful_full_check_clears_gate(tmp_path: Path) -> None:
         adapter.check(config, mode="metadata")
     adapter.check(config, mode="full")
     assert adapter.backup(config, source_root=tmp_path / "shadow").snapshot_id == "new"
+
+
+def test_none_mode_translates_key_error_to_auth_mode_mismatch(tmp_path: Path) -> None:
+    runner = FakeRunner([ResticProcessError("repository_key_invalid", "wrong key")])
+    with pytest.raises(ResticProcessError) as raised:
+        _adapter(tmp_path, runner).backup(_config(), source_root=tmp_path / "shadow")
+    assert raised.value.fault == "repository_auth_mode_mismatch"

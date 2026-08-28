@@ -102,7 +102,11 @@ class ResticProcess:
         events: list[Mapping[str, Any]] = []
         detected: ResticFault | None = None
         try:
-            while process.poll() is None or not lines.empty():
+            while (
+                process.poll() is None
+                or any(thread.is_alive() for thread in threads)
+                or not lines.empty()
+            ):
                 if self._cancellation.requested:
                     self._terminate(process)
                     raise CancellationRequested("executor cancellation was requested")

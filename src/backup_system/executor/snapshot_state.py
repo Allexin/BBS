@@ -43,7 +43,7 @@ class SnapshotStateStore:
         if not path.exists():
             state = SnapshotState(subset_parts=subset_parts)
             self.save(job_id, state)
-            return LoadedSnapshotState(state, False)
+            return LoadedSnapshotState(state, True)
         try:
             envelope = json.loads(path.read_text(encoding="utf-8"))
             payload = envelope["state"]

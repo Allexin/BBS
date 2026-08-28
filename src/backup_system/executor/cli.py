@@ -7,12 +7,19 @@ from pathlib import Path
 from typing import BinaryIO, Protocol, TextIO
 from uuid import UUID
 
-from backup_system.common.config import ExecutorJobConfig, MirrorJobConfig, validate_job_id
+from backup_system.common.config import (
+    ExecutorJobConfig,
+    MaintenanceJobConfig,
+    MirrorJobConfig,
+    SnapshotJobConfig,
+    validate_job_id,
+)
 from backup_system.common.config_io import (
     ConfigLoadError,
     load_smart_config,
     validate_job_with_owner,
 )
+from backup_system.common.events import EventBase
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
@@ -32,6 +39,7 @@ from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventS
 from backup_system.executor.runtime import run_recovery
 from backup_system.executor.smart_events import build_smart_events
 from backup_system.executor.smart_preflight import SmartPreflightObservation
+from backup_system.executor.snapshot_runtime import run_snapshot_operation
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,7 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         return _execute_operation(
             run_id=arguments.run_id,
             job_id=arguments.job,
-            operation=lambda token, smart_sink: run_mirror_operation(
+            operation=lambda token, smart_sink, event_sink: run_mirror_operation(
                 runtime_root=root,
                 config=config,
                 smart_config=smart_config,
@@ -106,6 +114,28 @@ def main(argv: Sequence[str] | None = None) -> int:
             input_stream=sys.stdin.buffer,
             output_stream=sys.stdout,
         )
+    if isinstance(config, (SnapshotJobConfig, MaintenanceJobConfig)) and (
+        (isinstance(config, SnapshotJobConfig) and arguments.command in {"run", "check"})
+        or (isinstance(config, MaintenanceJobConfig) and arguments.command == "prune")
+    ):
+        smart_config = load_smart_config(config_dir / "smart.yaml")
+        return _execute_operation(
+            run_id=arguments.run_id,
+            job_id=arguments.job,
+            operation=lambda token, smart_sink, event_sink: run_snapshot_operation(
+                runtime_root=root,
+                config=config,
+                smart_config=smart_config,
+                run_id=arguments.run_id,
+                operation=arguments.command,
+                mode=getattr(arguments, "mode", None),
+                cancellation=token,
+                smart_sink=smart_sink,
+                event_sink=event_sink,
+            ),
+            input_stream=sys.stdin.buffer,
+            output_stream=sys.stdout,
+        )
     return 0
 
 
@@ -114,6 +144,7 @@ class _DataOperation(Protocol):
         self,
         token: CancellationToken,
         smart_sink: Callable[[tuple[SmartPreflightObservation, ...]], None],
+        event_sink: Callable[[EventBase], None],
     ) -> object: ...
 
 
@@ -137,7 +168,7 @@ def _execute_operation(
     outcome = ExecutorRunReporter(sink).execute(
         run_id=run_id,
         job_id=job_id,
-        operation=lambda: operation(token, smart_sink),
+        operation=lambda: operation(token, smart_sink, sink.emit),
     )
     return int(outcome.exit_code)
 

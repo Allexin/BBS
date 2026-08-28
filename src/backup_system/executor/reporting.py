@@ -23,6 +23,12 @@ from backup_system.executor.disk_control import (
     DiskNotFoundError,
 )
 from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
+from backup_system.executor.restic_process import ResticProcessError
+from backup_system.executor.snapshot_adapter import (
+    SnapshotCursorResetWarning,
+    SnapshotPruneWarning,
+    SnapshotVerificationRequired,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,4 +110,15 @@ def _failure_outcome(error: BaseException) -> ExecutorOutcome:
         return ExecutorOutcome("failed", ExecutorExitCode.DISK_IDENTITY_MISMATCH, False)
     if isinstance(error, (CancellationRequested, KeyboardInterrupt)):
         return ExecutorOutcome("cancelled", ExecutorExitCode.CANCELLED, False)
+    if isinstance(error, (SnapshotPruneWarning, SnapshotCursorResetWarning)):
+        return ExecutorOutcome("warning", ExecutorExitCode.SUCCESS_WITH_WARNING, True)
+    if isinstance(error, SnapshotVerificationRequired):
+        return ExecutorOutcome("failed", ExecutorExitCode.VERIFICATION_FAILED, True)
+    if isinstance(error, ResticProcessError):
+        code = (
+            ExecutorExitCode.SOURCE_READ_ERROR
+            if error.fault == "source_read_error"
+            else ExecutorExitCode.BACKUP_ENGINE_FAILED
+        )
+        return ExecutorOutcome("failed", code, True)
     return ExecutorOutcome("failed", ExecutorExitCode.INTERNAL_ERROR, False)
