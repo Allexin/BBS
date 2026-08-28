@@ -19,6 +19,7 @@
 | Прямой Windows Storage API и восстановление mount point | Пройдено |
 | restic fail-fast | Пройдено для source read error |
 | restic out-of-space fail-fast | Пройдено по принятому ADR 0001 |
+| restic repository write/I/O fail-fast | Пройдено по принятому ADR 0001 |
 | Принудительное прерывание и recovery | Пройдено для restic repository |
 
 В результаты не включаются имена машины, серийные номера, реальные пути и данные.
@@ -50,3 +51,14 @@ stderr за 1.512 секунды и отправил cooperative interrupt. Rest
 code 130, временный VHDX был удалён. До прерывания restic не выдал структурированного
 JSON error event. ADR 0001 принят: для закреплённой версии разрешён точный,
 покрытый integration-тестом классификатор stderr diagnostic.
+
+Repository disconnect probe отсоединил изолированный VHDX после подтверждённого
+progress. Версионно закреплённая retry diagnostic была классифицирована немедленно,
+restic cooperative-прерван с exit code 130. Структурированный JSON error до
+прерывания отсутствовал; применён контракт ADR 0001. Временный диск, VHDX и процессы
+полностью очищены.
+
+## Итог
+
+Все проверки технического этапа 0 пройдены. Ограничение restic по ранним repository
+faults оформлено и принято в ADR 0001; snapshot adapter разблокирован для реализации.
