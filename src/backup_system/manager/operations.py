@@ -327,6 +327,53 @@ class OperationsRepository:
                 },
             )
 
+    def reconcile_interrupted(self, *, reconciled_at: datetime | None = None) -> tuple[UUID, ...]:
+        timestamp = require_aware(reconciled_at or utc_now()).isoformat()
+        with self._connection:
+            rows = self._connection.execute(
+                "SELECT run_id, operation_id FROM runs WHERE state = ? ORDER BY started_at",
+                (RunState.RUNNING,),
+            ).fetchall()
+            for run_value, operation_value in rows:
+                run_id = UUID(str(run_value))
+                cursor = self._connection.execute(
+                    """UPDATE runs SET state = ?, result = ?, finished_at = ?
+                    WHERE run_id = ? AND state = ?""",
+                    (
+                        RunState.FINISHED,
+                        RunResult.INTERRUPTED,
+                        timestamp,
+                        str(run_id),
+                        RunState.RUNNING,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise StateTransitionError("running run changed during reconciliation")
+                cursor = self._connection.execute(
+                    """UPDATE operations SET state = ?, terminal_reason = ?
+                    WHERE operation_id = ? AND state = ?""",
+                    (
+                        OperationState.COMPLETED,
+                        "manager_startup_interrupted",
+                        str(operation_value),
+                        OperationState.RUNNING,
+                    ),
+                )
+                if cursor.rowcount != 1:
+                    raise StateTransitionError("interrupted run operation is not running")
+                self._insert_event(
+                    run_id,
+                    timestamp,
+                    "run_finished",
+                    {
+                        "schema_version": 1,
+                        "event": "run_finished",
+                        "result": RunResult.INTERRUPTED,
+                        "timestamp": timestamp,
+                    },
+                )
+        return tuple(UUID(str(row[0])) for row in rows)
+
     def _insert_event(
         self,
         run_id: UUID,

@@ -160,3 +160,38 @@ def test_finished_run_rejects_further_mutation(tmp_path: Path) -> None:
             )
     finally:
         connection.close()
+
+
+def test_restart_reconciles_running_and_preserves_queued_tail(tmp_path: Path) -> None:
+    path = tmp_path / "manager.sqlite3"
+    repository, connection = _repository(path)
+    active = repository.enqueue(
+        deduplication_key="manual:active",
+        job_id="data",
+        kind="backup",
+        trigger_source="manual",
+    )
+    queued = repository.enqueue(
+        deduplication_key="manual:queued",
+        job_id="data",
+        kind="check",
+        trigger_source="manual",
+    )
+    claimed = repository.claim_next()
+    assert claimed is not None and claimed.operation_id == active.operation_id
+    connection.close()
+
+    connection = open_manager_database(path)
+    try:
+        restarted = OperationsRepository(connection)
+        assert restarted.reconcile_interrupted() == (claimed.run_id,)
+        states = dict(connection.execute("SELECT operation_id, state FROM operations").fetchall())
+        assert states[str(active.operation_id)] == OperationState.COMPLETED
+        assert states[str(queued.operation_id)] == OperationState.QUEUED
+        run = connection.execute(
+            "SELECT state, result FROM runs WHERE run_id = ?", (str(claimed.run_id),)
+        ).fetchone()
+        assert run == ("finished", RunResult.INTERRUPTED)
+        assert restarted.reconcile_interrupted() == ()
+    finally:
+        connection.close()
