@@ -47,7 +47,7 @@ def test_database_is_configured_and_migrated_idempotently(tmp_path: Path) -> Non
         ]
 
     with open_manager_database(path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone() == (5,)
+        assert connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone() == (6,)
 
 
 def test_foreign_keys_and_unfinished_operation_uniqueness_are_enforced(tmp_path: Path) -> None:
