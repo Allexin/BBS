@@ -1,6 +1,8 @@
 """Local control command surface; spool writes arrive in stage 2."""
 
 import argparse
+import json
+import sqlite3
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -19,6 +21,7 @@ from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import new_command_id, parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
 from backup_system.common.time import utc_now
+from backup_system.ctl.state_reader import LocalStateReader
 
 
 def _job_id(value: str) -> str:
@@ -119,6 +122,23 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (ConfigLoadError, RuntimeRootError) as error:
             print(str(error), file=sys.stderr)
             return ExecutorExitCode.CONFIG_INVALID
+        return 0
+    if arguments.command in {"status", "jobs", "queue"} and not (
+        arguments.command == "queue" and arguments.queue_command == "remove"
+    ):
+        try:
+            root = discover_runtime_root(Path(sys.executable))
+            with LocalStateReader(root / "data" / "state" / "manager.sqlite3") as reader:
+                if arguments.command == "status":
+                    projection = reader.status()
+                elif arguments.command == "jobs":
+                    projection = reader.jobs()
+                else:
+                    projection = reader.queue()
+        except (OSError, RuntimeRootError, sqlite3.Error) as error:
+            print(str(error), file=sys.stderr)
+            return ExecutorExitCode.INTERNAL_ERROR
+        print(json.dumps(projection, ensure_ascii=False, separators=(",", ":")))
         return 0
     command = command_from_arguments(arguments)
     if command is not None:
