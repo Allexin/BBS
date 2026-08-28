@@ -91,15 +91,28 @@ class ExecutorDiskLifecycle:
                     primary_error=primary_error,
                 ) from cleanup_error
 
-    def recover(self, config: DiskConfig) -> LifecycleSuccess:
+    def recover(
+        self,
+        config: DiskConfig,
+        *,
+        pre_offline_cleanup: Callable[[], None] | None = None,
+    ) -> LifecycleSuccess:
         observation = self._control.inspect(config)
+        primary_error: BaseException | None = None
+        if pre_offline_cleanup is not None:
+            try:
+                pre_offline_cleanup()
+            except BaseException as error:
+                primary_error = error
         try:
             self._control.take_offline(config, observation.verified)
         except BaseException as cleanup_error:
             raise LifecycleCleanupError(
                 "backup disk recovery did not confirm offline",
-                primary_error=None,
+                primary_error=primary_error,
             ) from cleanup_error
+        if primary_error is not None:
+            raise primary_error
         return LifecycleSuccess(None)
 
 

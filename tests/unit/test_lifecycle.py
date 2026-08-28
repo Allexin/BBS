@@ -113,6 +113,40 @@ def test_recover_only_inspects_and_confirms_offline() -> None:
     assert control.calls == ["inspect", "offline"]
 
 
+def test_recover_runs_owned_vss_cleanup_before_disk_offline() -> None:
+    control = FakeControl()
+    ExecutorDiskLifecycle(control).recover(
+        _config(), pre_offline_cleanup=lambda: control.calls.append("vss-cleanup")
+    )
+    assert control.calls == ["inspect", "vss-cleanup", "offline"]
+
+
+def test_recover_still_offlines_disk_after_vss_cleanup_failure() -> None:
+    control = FakeControl()
+    primary = RuntimeError("VSS cleanup failed")
+
+    def fail_cleanup() -> None:
+        raise primary
+
+    with pytest.raises(RuntimeError, match="VSS cleanup failed") as raised:
+        ExecutorDiskLifecycle(control).recover(_config(), pre_offline_cleanup=fail_cleanup)
+    assert raised.value is primary
+    assert control.calls == ["inspect", "offline"]
+
+
+def test_recover_offline_failure_keeps_vss_cleanup_failure() -> None:
+    control = FakeControl()
+    control.offline_error = OSError("offline failed")
+    primary = RuntimeError("VSS cleanup failed")
+
+    def fail_cleanup() -> None:
+        raise primary
+
+    with pytest.raises(LifecycleCleanupError) as raised:
+        ExecutorDiskLifecycle(control).recover(_config(), pre_offline_cleanup=fail_cleanup)
+    assert raised.value.primary_error is primary
+
+
 def test_marker_verification_is_bounded_and_exact(tmp_path: Path) -> None:
     marker_uuid = uuid4()
     marker = tmp_path / "marker.json"
