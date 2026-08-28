@@ -2,7 +2,15 @@ from uuid import UUID
 
 import pytest
 
-from backup_system.executor.native_vss import NativeVssBackend
+from backup_system.executor.native_vss import (
+    HRESULT_OPERATION_CANCELLED,
+    HRESULT_WAIT_TIMEOUT,
+    VSS_S_ASYNC_CANCELLED,
+    VSS_S_ASYNC_FINISHED,
+    VSS_S_ASYNC_PENDING,
+    NativeVssBackend,
+    _require_async_finished,
+)
 from backup_system.executor.vss import VssSnapshot
 from backup_system.executor.windows_vss import VssBackendError
 
@@ -73,3 +81,15 @@ def test_second_active_set_is_rejected() -> None:
     backend.start_snapshot_set()
     with pytest.raises(VssBackendError, match="another set"):
         backend.start_snapshot_set()
+
+
+def test_async_status_requires_finished_and_classifies_bounded_wait_failures() -> None:
+    _require_async_finished(VSS_S_ASYNC_FINISHED, "DoSnapshotSet")
+
+    with pytest.raises(VssBackendError) as pending:
+        _require_async_finished(VSS_S_ASYNC_PENDING, "DoSnapshotSet")
+    assert pending.value.code == HRESULT_WAIT_TIMEOUT
+
+    with pytest.raises(VssBackendError) as cancelled:
+        _require_async_finished(VSS_S_ASYNC_CANCELLED, "DoSnapshotSet")
+    assert cancelled.value.code == HRESULT_OPERATION_CANCELLED

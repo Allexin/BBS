@@ -12,7 +12,12 @@ from backup_system.executor.vss import VssSnapshot
 from backup_system.executor.windows_vss import VssBackendError
 
 HRESULT = ctypes.c_long
-INFINITE = 0xFFFFFFFF
+VSS_ASYNC_TIMEOUT_MILLISECONDS = 120_000
+VSS_S_ASYNC_PENDING = 0x00042309
+VSS_S_ASYNC_FINISHED = 0x0004230A
+VSS_S_ASYNC_CANCELLED = 0x0004230B
+HRESULT_WAIT_TIMEOUT = 0x800705B4
+HRESULT_OPERATION_CANCELLED = 0x800704C7
 VSS_BT_COPY = 5
 VSS_CTX_CLIENT_ACCESSIBLE = 0x0000001D
 VSS_OBJECT_SNAPSHOT_SET = 2
@@ -263,18 +268,26 @@ def _wait_async(pointer: ctypes.c_void_p, operation: str) -> None:
         raise VssBackendError(f"{operation} returned null async", 0x80004003)
     try:
         wait = _raw_method(pointer, 4, HRESULT, wintypes.DWORD)
-        _check(f"{operation}.Wait", wait(pointer, INFINITE))
+        _check(f"{operation}.Wait", wait(pointer, VSS_ASYNC_TIMEOUT_MILLISECONDS))
         status = HRESULT()
-        reserved = wintypes.LONG()
         query = _raw_method(
             pointer, 5, HRESULT, ctypes.POINTER(HRESULT), ctypes.POINTER(wintypes.LONG)
         )
-        _check(
-            f"{operation}.QueryStatus", query(pointer, ctypes.byref(status), ctypes.byref(reserved))
-        )
-        _check(operation, status.value)
+        _check(f"{operation}.QueryStatus", query(pointer, ctypes.byref(status), None))
+        _require_async_finished(status.value, operation)
     finally:
         _raw_method(pointer, 2, ctypes.c_ulong)(pointer)
+
+
+def _require_async_finished(status: int, operation: str) -> None:
+    unsigned = _unsigned(status)
+    if unsigned == VSS_S_ASYNC_FINISHED:
+        return
+    if unsigned == VSS_S_ASYNC_PENDING:
+        raise VssBackendError(f"{operation} timed out", HRESULT_WAIT_TIMEOUT)
+    if unsigned == VSS_S_ASYNC_CANCELLED:
+        raise VssBackendError(f"{operation} was cancelled", HRESULT_OPERATION_CANCELLED)
+    _check(operation, status)
 
 
 def _guid(value: UUID) -> _Guid:
