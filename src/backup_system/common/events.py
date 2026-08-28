@@ -6,6 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator
 
+from backup_system.common.smart import SmartMetrics
 from backup_system.common.time import require_aware
 
 
@@ -53,6 +54,16 @@ class DiskOfflineFailed(EventBase):
     event: Literal["disk_offline_failed"]
 
 
+class SmartObserved(EventBase):
+    event: Literal["smart_observed"]
+    disk_id: str
+    collection_success: bool
+    health: Literal["healthy", "warning", "critical", "unknown"]
+    identity_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    metrics: SmartMetrics
+    reason: str | None = None
+
+
 class RunFinished(EventBase):
     event: Literal["run_finished"]
     result: Literal["success", "warning", "failed", "cancelled", "interrupted"]
@@ -67,6 +78,7 @@ KnownExecutorEvent = Annotated[
     | SnapshotCreated
     | DiskOfflineConfirmed
     | DiskOfflineFailed
+    | SmartObserved
     | RunFinished,
     Field(discriminator="event"),
 ]
@@ -91,6 +103,7 @@ def parse_executor_event(value: dict[str, Any]) -> KnownExecutorEvent | UnknownE
         "snapshot_created",
         "disk_offline_confirmed",
         "disk_offline_failed",
+        "smart_observed",
         "run_finished",
     }
     if value.get("event") not in known_names:

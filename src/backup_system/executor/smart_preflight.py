@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Literal, Protocol
 
 from backup_system.common.config import SmartConfig, SmartDiskConfig
 from backup_system.common.smart import SmartMetrics
@@ -26,9 +27,10 @@ class SmartctlBackend(Protocol):
 class SmartPreflightObservation:
     disk_id: str
     collection_success: bool
-    health: str
+    health: Literal["healthy", "warning", "critical", "unknown"]
     metrics: SmartMetrics
     reason: str | None = None
+    identity_key: str | None = None
 
 
 class SubprocessSmartctlBackend:
@@ -105,11 +107,18 @@ class SmartPreflight:
         if capacity != configured.identity.expected_size_bytes:
             return _unknown(configured, "configured SMART disk capacity does not match")
         metrics = _parse_metrics(payload)
+        health: Literal["critical", "healthy"]
         if metrics.overall_passed is False or metrics.nvme_critical_warning is True:
             health = "critical"
         else:
             health = "healthy"
-        return SmartPreflightObservation(configured.id, True, health, metrics)
+        return SmartPreflightObservation(
+            configured.id,
+            True,
+            health,
+            metrics,
+            identity_key=_identity_key(configured),
+        )
 
 
 def _parse_metrics(payload: dict[str, Any]) -> SmartMetrics:
@@ -185,3 +194,10 @@ def _normalize(value: str) -> str:
 
 def _first_not_none(first: int | None, second: int | None) -> int | None:
     return first if first is not None else second
+
+
+def _identity_key(configured: SmartDiskConfig) -> str:
+    material = (
+        _normalize(configured.identity.serial) + "\0" + str(configured.identity.expected_size_bytes)
+    ).encode("utf-8")
+    return hashlib.sha256(material).hexdigest()

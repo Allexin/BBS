@@ -57,6 +57,9 @@ def test_ata_smart_json_is_normalized_without_absolute_threshold_gaps() -> None:
     assert observation.collection_success and observation.health == "healthy"
     assert observation.metrics.pending_sectors == 1
     assert observation.metrics.interface_crc_errors == 4
+    assert observation.identity_key is not None
+    assert len(observation.identity_key) == 64
+    assert "serial-1" not in observation.identity_key
     assert backend.timeout == 5
 
 
