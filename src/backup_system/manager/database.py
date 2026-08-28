@@ -44,6 +44,7 @@ CREATE TABLE operations (
     job_id TEXT NOT NULL REFERENCES jobs(job_id),
     kind TEXT NOT NULL,
     mode TEXT,
+    request_json TEXT,
     trigger_source TEXT NOT NULL,
     scheduled_at TEXT,
     queued_at TEXT NOT NULL,

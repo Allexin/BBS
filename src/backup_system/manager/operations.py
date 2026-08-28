@@ -112,6 +112,7 @@ class OperationsRepository:
         kind: str,
         trigger_source: str,
         mode: str | None = None,
+        request: dict[str, str] | None = None,
         scheduled_at: datetime | None = None,
         queued_at: datetime | None = None,
     ) -> EnqueueResult:
@@ -120,14 +121,19 @@ class OperationsRepository:
         operation_id = new_operation_id()
         queued = require_aware(queued_at or utc_now()).isoformat()
         scheduled = require_aware(scheduled_at).isoformat() if scheduled_at else None
+        request_json = (
+            json.dumps(request, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            if request is not None
+            else None
+        )
         try:
             with self._connection:
                 self._connection.execute(
                     """
                     INSERT INTO operations(
-                        operation_id, deduplication_key, job_id, kind, mode,
+                        operation_id, deduplication_key, job_id, kind, mode, request_json,
                         trigger_source, scheduled_at, queued_at, state
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         str(operation_id),
@@ -135,6 +141,7 @@ class OperationsRepository:
                         job_id,
                         kind,
                         mode,
+                        request_json,
                         trigger_source,
                         scheduled,
                         queued,

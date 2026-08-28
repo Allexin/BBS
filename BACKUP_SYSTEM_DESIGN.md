@@ -2535,6 +2535,7 @@ CREATE TABLE operations (
     job_id TEXT NOT NULL REFERENCES jobs(job_id),
     kind TEXT NOT NULL,
     mode TEXT,
+    request_json TEXT,
     trigger_source TEXT NOT NULL,
     scheduled_at TEXT,
     queued_at TEXT NOT NULL,
@@ -2663,6 +2664,9 @@ CREATE TABLE backup_metrics (
 в `runs.result`. Переход operation `queued → running` и создание её единственного run
 выполняются одной транзакцией; завершение run и переход operation
 `running → completed` также выполняются одной транзакцией.
+`operations.request_json` равен `NULL` для операций без дополнительных параметров;
+для restore он содержит только провалидированные `version`, `path` и `target` из
+типизированной spool-команды. Произвольные command arguments в это поле не попадают.
 
 `operation` создаётся при принятии работы в очередь. `run` создаётся только при
 переходе operation в `running` и фактическом запуске executor; у operation со
