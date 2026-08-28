@@ -23,6 +23,11 @@ def _validate_job_id(value: str) -> str:
     return value
 
 
+def validate_job_id(value: str) -> str:
+    """Validate a public job identifier at CLI and file boundaries."""
+    return _validate_job_id(value)
+
+
 def _validate_absolute_windows_path(value: str) -> str:
     path = PureWindowsPath(value)
     if not path.is_absolute() or not path.drive:

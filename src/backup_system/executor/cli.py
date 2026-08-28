@@ -5,12 +5,14 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
+from backup_system.common.config import validate_job_id
 from backup_system.common.config_io import (
     ConfigLoadError,
     load_smart_config,
     validate_job_with_owner,
 )
 from backup_system.common.exit_codes import ExecutorExitCode
+from backup_system.common.ids import parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
 
 
@@ -19,18 +21,18 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     for command in ("run", "prune", "restore-test", "repair-mirror", "recover"):
         child = subparsers.add_parser(command)
-        child.add_argument("--run-id", required=True)
-        child.add_argument("--job", required=True)
+        child.add_argument("--run-id", required=True, type=parse_uuid4)
+        child.add_argument("--job", required=True, type=validate_job_id)
     check = subparsers.add_parser("check")
-    check.add_argument("--run-id", required=True)
-    check.add_argument("--job", required=True)
+    check.add_argument("--run-id", required=True, type=parse_uuid4)
+    check.add_argument("--job", required=True, type=validate_job_id)
     check.add_argument("--mode", choices=("metadata", "sample", "full"), required=True)
     restore = subparsers.add_parser("restore")
-    restore.add_argument("--run-id", required=True)
-    restore.add_argument("--job", required=True)
+    restore.add_argument("--run-id", required=True, type=parse_uuid4)
+    restore.add_argument("--job", required=True, type=validate_job_id)
     restore.add_argument("--request-file", required=True)
     validate = subparsers.add_parser("validate")
-    validate.add_argument("--job", required=True)
+    validate.add_argument("--job", required=True, type=validate_job_id)
     subparsers.add_parser("validate-smart-config")
     return parser
 

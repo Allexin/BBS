@@ -18,7 +18,30 @@ from backup_system.manager.cli import build_parser as manager_parser
         ),
         (ctl_parser(), ["config", "validate"]),
         (ctl_parser(), ["queue", "remove", "00000000-0000-4000-8000-000000000000"]),
+        (
+            ctl_parser(),
+            [
+                "restore",
+                "data",
+                "--version",
+                "latest",
+                "--path",
+                ".",
+                "--target",
+                "C:\\Restore",
+            ],
+        ),
     ],
 )
 def test_documented_cli_shapes_parse(parser: argparse.ArgumentParser, arguments: list[str]) -> None:
     parser.parse_args(arguments)
+
+
+def test_invalid_job_id_is_rejected_at_cli_boundary() -> None:
+    with pytest.raises(SystemExit):
+        ctl_parser().parse_args(["run", "../data"])
+
+
+def test_non_uuid4_operation_id_is_rejected_at_cli_boundary() -> None:
+    with pytest.raises(SystemExit):
+        ctl_parser().parse_args(["queue", "remove", "00000000-0000-1000-8000-000000000000"])
