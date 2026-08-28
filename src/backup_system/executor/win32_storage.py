@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Protocol
 
 from backup_system.executor.disk_control import DiskCandidate, DiskControlError
+from backup_system.executor.storage_inventory import WindowsStorageInventory
 
 GENERIC_READ = 0x80000000
 GENERIC_WRITE = 0x40000000
@@ -182,11 +183,11 @@ class Win32StorageBackend:
 
     def __init__(
         self,
-        inventory: Callable[[], Sequence[DiskCandidate]],
+        inventory: Callable[[], Sequence[DiskCandidate]] | None = None,
         *,
         native: NativeStorageApi | None = None,
     ) -> None:
-        self._inventory = inventory
+        self._inventory = inventory or WindowsStorageInventory().enumerate
         self._native = native or CtypesStorageApi()
 
     def enumerate_disks(self) -> Sequence[DiskCandidate]:

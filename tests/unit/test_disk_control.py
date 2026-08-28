@@ -119,6 +119,14 @@ def test_changed_windows_disk_number_is_rediscovered_not_treated_as_identity() -
     assert storage.set_calls == [(9, False)]
 
 
+def test_multiple_partitions_on_same_physical_disk_do_not_make_serial_ambiguous() -> None:
+    storage = FakeStorage(_candidate())
+    second = replace(_candidate(), partition_guid="other", volume_guid="other")
+    storage.enumerate_disks = lambda: (storage.candidate, second)  # type: ignore[method-assign]
+    observation = _controller(storage).inspect(_config())
+    assert observation.verified.partition_guid == "partition-guid"
+
+
 def test_online_timeout_is_bounded() -> None:
     storage = FakeStorage(_candidate())
     storage.ignore_state_changes = True

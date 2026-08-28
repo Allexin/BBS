@@ -133,17 +133,20 @@ class DiskController:
         ]
         if not serial_matches:
             raise DiskNotFoundError("configured physical disk was not found")
-        if len(serial_matches) != 1:
+        if len({item.disk_number for item in serial_matches}) != 1:
             raise DiskIdentityMismatchError("physical disk serial is not unique")
-        candidate = serial_matches[0]
+        identity_matches = [
+            item
+            for item in serial_matches
+            if item.size_bytes == config.expected_size_bytes
+            and _normalize_guid(item.partition_guid) == _normalize_guid(config.partition_guid)
+            and _normalize_guid(item.volume_guid) == _normalize_guid(config.volume_guid)
+        ]
+        if len(identity_matches) != 1:
+            raise DiskIdentityMismatchError("configured disk identity does not match hardware")
+        candidate = identity_matches[0]
         if candidate.is_boot or candidate.is_system:
             raise DiskIdentityMismatchError("boot and system disks are forbidden")
-        if (
-            candidate.size_bytes != config.expected_size_bytes
-            or _normalize_guid(candidate.partition_guid) != _normalize_guid(config.partition_guid)
-            or _normalize_guid(candidate.volume_guid) != _normalize_guid(config.volume_guid)
-        ):
-            raise DiskIdentityMismatchError("configured disk identity does not match hardware")
         return candidate
 
     @staticmethod
