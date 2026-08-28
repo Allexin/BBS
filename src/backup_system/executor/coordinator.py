@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import Protocol, TypeVar
 
 from backup_system.common.config import DiskConfig, SmartConfig
+from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.disk_control import VolumeObservation
 from backup_system.executor.lifecycle import (
     ExecutorDiskLifecycle,
@@ -38,11 +39,13 @@ class ExecutorWindowsCoordinator:
         disk_lifecycle: ExecutorDiskLifecycle,
         smart: SmartCollector,
         smart_sink: Callable[[tuple[SmartPreflightObservation, ...]], None],
+        cancellation: CancellationToken,
     ) -> None:
         self._lock_factory = lock_factory
         self._disk_lifecycle = disk_lifecycle
         self._smart = smart
         self._smart_sink = smart_sink
+        self._cancellation = cancellation
 
     def run(
         self,
@@ -56,11 +59,17 @@ class ExecutorWindowsCoordinator:
 
         def after_mount(volume: VolumeObservation) -> T:
             nonlocal observations
+            self._cancellation.raise_if_requested()
             observations = tuple(self._smart.collect(smart_config))
             self._smart_sink(observations)
-            return action(volume)
+            self._cancellation.raise_if_requested()
+            value = action(volume)
+            self._cancellation.raise_if_requested()
+            return value
 
+        self._cancellation.raise_if_requested()
         with self._lock_factory():
+            self._cancellation.raise_if_requested()
             lifecycle_result = self._disk_lifecycle.run(disk, marker, after_mount)
         return ExecutorWindowsResult(
             value=lifecycle_result.value,

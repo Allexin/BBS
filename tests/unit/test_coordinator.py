@@ -2,6 +2,8 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from uuid import UUID
 
+import pytest
+
 from backup_system.common.config import (
     DiskConfig,
     SmartConfig,
@@ -9,6 +11,7 @@ from backup_system.common.config import (
     SmartDiskIdentityConfig,
 )
 from backup_system.common.smart import SmartMetrics
+from backup_system.executor.cancellation import CancellationRequested, CancellationToken
 from backup_system.executor.coordinator import ExecutorWindowsCoordinator
 from backup_system.executor.disk_control import DiskObservation, VerifiedDisk, VolumeObservation
 from backup_system.executor.lifecycle import ExecutorDiskLifecycle, MarkerExpectation
@@ -71,7 +74,11 @@ class Smart:
 
 
 def _coordinator(
-    calls: list[str], sink: list[tuple[SmartPreflightObservation, ...]]
+    calls: list[str],
+    sink: list[tuple[SmartPreflightObservation, ...]],
+    *,
+    cancellation: CancellationToken | None = None,
+    smart: Smart | None = None,
 ) -> ExecutorWindowsCoordinator:
     @contextmanager
     def lock() -> Iterator[object]:
@@ -86,8 +93,9 @@ def _coordinator(
         disk_lifecycle=ExecutorDiskLifecycle(
             Control(calls), marker_verifier=lambda marker: calls.append("marker")
         ),
-        smart=Smart(calls),
+        smart=smart or Smart(calls),
         smart_sink=sink.append,
+        cancellation=cancellation or CancellationToken(),
     )
 
 
@@ -122,3 +130,54 @@ def test_recover_holds_lock_across_vss_cleanup_and_offline() -> None:
         disk=_disk(), owned_vss_cleanup=lambda: calls.append("vss-cleanup")
     )
     assert calls == ["lock", "inspect", "vss-cleanup", "offline", "unlock"]
+
+
+def test_preexisting_cancellation_does_not_touch_disk() -> None:
+    calls: list[str] = []
+    cancellation = CancellationToken()
+    cancellation.request()
+
+    with pytest.raises(CancellationRequested):
+        _coordinator(calls, [], cancellation=cancellation).run(
+            disk=_disk(),
+            marker=MarkerExpectation(r"C:\BackupVolumes\primary\.backup-volume.json", UUID(int=1)),
+            smart_config=_smart_config(),
+            action=lambda volume: None,
+        )
+
+    assert calls == []
+
+
+def test_cancellation_during_smart_still_returns_disk_offline() -> None:
+    calls: list[str] = []
+    cancellation = CancellationToken()
+
+    class CancellingSmart(Smart):
+        def collect(self, config: SmartConfig) -> tuple[SmartPreflightObservation, ...]:
+            observations = super().collect(config)
+            cancellation.request()
+            return observations
+
+    with pytest.raises(CancellationRequested):
+        _coordinator(
+            calls,
+            [],
+            cancellation=cancellation,
+            smart=CancellingSmart(calls),
+        ).run(
+            disk=_disk(),
+            marker=MarkerExpectation(r"C:\BackupVolumes\primary\.backup-volume.json", UUID(int=1)),
+            smart_config=_smart_config(),
+            action=lambda volume: calls.append("action"),
+        )
+
+    assert calls == [
+        "lock",
+        "inspect",
+        "online",
+        "mount",
+        "marker",
+        "smart",
+        "offline",
+        "unlock",
+    ]
