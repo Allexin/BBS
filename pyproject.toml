@@ -1,0 +1,51 @@
+[build-system]
+requires = ["hatchling>=1.27,<2"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bbs-backup-system"
+version = "0.1.0"
+description = "Windows backup orchestration system"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "comtypes>=1.4,<2",
+  "croniter>=6,<7",
+  "httpx>=0.28,<1",
+  "pydantic>=2.11,<3",
+  "pywin32>=310; sys_platform == 'win32'",
+  "pyyaml>=6,<7",
+]
+
+[project.scripts]
+backup-manager = "backup_system.manager.cli:main"
+backup-executor = "backup_system.executor.cli:main"
+backupctl = "backup_system.ctl.cli:main"
+
+[dependency-groups]
+dev = [
+  "mypy>=1.17,<2",
+  "pytest>=8.4,<9",
+  "pytest-timeout>=2.4,<3",
+  "ruff>=0.12,<1",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/backup_system"]
+
+[tool.pytest.ini_options]
+addopts = "--strict-config --strict-markers --timeout=30"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["poc"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+packages = ["backup_system"]

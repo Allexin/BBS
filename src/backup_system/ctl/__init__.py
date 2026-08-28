@@ -1,0 +1,1 @@
+"""Local administrator CLI package."""

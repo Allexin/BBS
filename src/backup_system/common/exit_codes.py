@@ -1,0 +1,19 @@
+"""Stable executor process exit codes."""
+
+from enum import IntEnum
+
+
+class ExecutorExitCode(IntEnum):
+    SUCCESS = 0
+    SUCCESS_WITH_WARNING = 10
+    CONFIG_INVALID = 20
+    DISK_NOT_FOUND = 21
+    DISK_IDENTITY_MISMATCH = 22
+    REPOSITORY_UNAVAILABLE = 23
+    SOURCE_READ_ERROR = 24
+    BACKUP_ENGINE_FAILED = 25
+    VERIFICATION_FAILED = 26
+    RESTORE_TEST_FAILED = 27
+    DISK_OFFLINE_FAILED = 28
+    CANCELLED = 29
+    INTERNAL_ERROR = 30
