@@ -110,11 +110,23 @@ class ResticProcess:
                     stream, line = lines.get(timeout=0.1)
                 except queue.Empty:
                     continue
-                event = _parse_event(line)
-                if event is not None:
+                parsed = _parse_events(line)
+                for event in parsed:
                     events.append(event)
                     self._event_sink(event)
-                detected = _classify_fault(stream, line, event, _repository_argument(arguments))
+                detected = next(
+                    (
+                        fault
+                        for event in parsed or (None,)
+                        if (
+                            fault := _classify_fault(
+                                stream, line, event, _repository_argument(arguments)
+                            )
+                        )
+                        is not None
+                    ),
+                    None,
+                )
                 if detected is not None:
                     self._terminate(process)
                     raise ResticProcessError(
@@ -122,7 +134,7 @@ class ResticProcess:
                         f"restic failed: {detected}",
                         exit_code=process.returncode,
                     )
-                if expect_json and stream == "stdout" and line and event is None:
+                if expect_json and stream == "stdout" and line and not parsed:
                     self._terminate(process)
                     raise ResticProcessError("malformed_output", "restic emitted malformed JSON")
             return_code = process.wait()
@@ -157,12 +169,16 @@ def _read_lines(stream_name: str, stream: Any, output: queue.Queue[tuple[str, st
         output.put((stream_name, line.rstrip("\r\n")))
 
 
-def _parse_event(line: str) -> Mapping[str, Any] | None:
+def _parse_events(line: str) -> tuple[Mapping[str, Any], ...]:
     try:
         value = json.loads(line)
     except json.JSONDecodeError:
-        return None
-    return value if isinstance(value, dict) else None
+        return ()
+    if isinstance(value, dict):
+        return (value,)
+    if isinstance(value, list) and all(isinstance(item, dict) for item in value):
+        return tuple(value)
+    return ()
 
 
 def _classify_fault(
