@@ -79,8 +79,7 @@ class WindowsMirrorFileOperations:
         temp.parent.mkdir(parents=True, exist_ok=True)
         cancelled = wintypes.BOOL(False)
 
-        @_COPY_PROGRESS
-        def progress(message: ctypes.c_void_p, context: ctypes.c_void_p) -> int:
+        def progress_callback(message: ctypes.c_void_p, context: ctypes.c_void_p) -> int:
             del message, context
             return (
                 COPYFILE2_PROGRESS_CANCEL
@@ -88,6 +87,7 @@ class WindowsMirrorFileOperations:
                 else COPYFILE2_PROGRESS_CONTINUE
             )
 
+        progress = _COPY_PROGRESS(progress_callback)  # type: ignore[no-untyped-call]
         parameters = _CopyFile2ExtendedParameters(
             ctypes.sizeof(_CopyFile2ExtendedParameters),
             COPY_FILE_FAIL_IF_EXISTS,
