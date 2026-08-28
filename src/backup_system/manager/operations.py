@@ -407,6 +407,13 @@ class OperationsRepository:
                     "timestamp": timestamp,
                 },
             )
+            if not disk_offline_confirmed:
+                SafetyLatchRepository(self._connection).set_disk_lifecycle_in_transaction(
+                    job_id=str(row[3]),
+                    source_run_id=run_id,
+                    reason="executor_finished_without_confirmed_offline",
+                    created_at=completed_time,
+                )
             if self._notifications is not None:
                 display_row = self._connection.execute(
                     """SELECT display_name FROM jobs WHERE job_id =

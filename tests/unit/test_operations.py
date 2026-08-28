@@ -81,6 +81,17 @@ def test_failed_run_and_unconfirmed_offline_queue_immediate_alerts(tmp_path: Pat
             ("run_failed",),
             ("disk_offline_unconfirmed",),
         ]
+        latch = SafetyLatchRepository(connection).active()
+        assert latch is not None
+        assert latch.job_id == "data" and latch.source_run_id == run.run_id
+
+        repository.enqueue(
+            deduplication_key="manual:blocked-after-offline-failure",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+        )
+        assert repository.claim_next() is None
     finally:
         connection.close()
 
