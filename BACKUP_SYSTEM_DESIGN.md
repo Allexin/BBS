@@ -306,7 +306,7 @@ jobs:
     schedule:
       timezone: Europe/Samara
       cron: '5 0 * * 1'
-      deadline: '08:00'
+      deadline: '08:00'  # optional
       cycle:
         - {operation: backup}
         - {operation: backup}
@@ -2576,7 +2576,11 @@ CREATE TABLE runs (
     error_count INTEGER NOT NULL DEFAULT 0,
     disk_offline_confirmed INTEGER NOT NULL DEFAULT 0,
     diagnostics_log_date_from TEXT,
-    diagnostics_log_date_to TEXT
+    diagnostics_log_date_to TEXT,
+    deadline_at TEXT,
+    deadline_exceeded_at TEXT,
+    deadline_overrun_seconds INTEGER,
+    deadline_final_notified INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE run_events (
@@ -3320,6 +3324,12 @@ Scheduler не создаёт автоматический retry. Если run �
 Job может опционально задавать локальное время deadline для каждого запуска. Это
 SLA и условие алерта, а не граница выполнения. Наступление deadline не останавливает
 executor и не отменяет run.
+
+Для scheduled operation deadline — первое совпадение настроенного локального времени,
+строго следующее после планового cron-момента. Поэтому при вечернем cron и утреннем
+deadline он относится к следующему календарному дню. Manual operation без
+`scheduled_at` deadline не получает. Неоднозначное DST-время использует `fold=0`;
+несуществующее локальное время сдвигается вперёд до первой существующей минуты.
 
 В момент фактического выхода run за deadline manager отправляет Telegram alert:
 

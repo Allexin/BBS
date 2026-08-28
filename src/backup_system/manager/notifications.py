@@ -41,38 +41,56 @@ class NotificationRepository:
         run_id: UUID | None = None,
         created_at: datetime | None = None,
     ) -> tuple[UUID, bool]:
+        with self._connection:
+            return self.enqueue_in_transaction(
+                deduplication_key=deduplication_key,
+                kind=kind,
+                payload=payload,
+                run_id=run_id,
+                created_at=created_at,
+            )
+
+    def enqueue_in_transaction(
+        self,
+        *,
+        deduplication_key: str,
+        kind: str,
+        payload: dict[str, Any],
+        run_id: UUID | None = None,
+        created_at: datetime | None = None,
+    ) -> tuple[UUID, bool]:
+        """Enqueue without commit; the caller owns the surrounding transaction."""
         if not deduplication_key or not kind:
             raise ValueError("notification key and kind must not be empty")
         notification_id = uuid4()
         timestamp = _utc(created_at or utc_now()).isoformat()
         payload_json = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
-        with self._connection:
-            cursor = self._connection.execute(
-                """INSERT INTO notifications(
+        cursor = self._connection.execute(
+            """INSERT INTO notifications(
                     notification_id, deduplication_key, run_id, kind, payload_json,
                     state, created_at, next_attempt_at
                 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(deduplication_key) DO NOTHING""",
-                (
-                    str(notification_id),
-                    deduplication_key,
-                    str(run_id) if run_id else None,
-                    kind,
-                    payload_json,
-                    NotificationState.PENDING,
-                    timestamp,
-                    timestamp,
-                ),
-            )
-            if cursor.rowcount == 1:
-                return notification_id, True
-            row = self._connection.execute(
-                "SELECT notification_id FROM notifications WHERE deduplication_key = ?",
-                (deduplication_key,),
-            ).fetchone()
-            if row is None:
-                raise RuntimeError("deduplicated notification could not be loaded")
-            return UUID(str(row[0])), False
+            (
+                str(notification_id),
+                deduplication_key,
+                str(run_id) if run_id else None,
+                kind,
+                payload_json,
+                NotificationState.PENDING,
+                timestamp,
+                timestamp,
+            ),
+        )
+        if cursor.rowcount == 1:
+            return notification_id, True
+        row = self._connection.execute(
+            "SELECT notification_id FROM notifications WHERE deduplication_key = ?",
+            (deduplication_key,),
+        ).fetchone()
+        if row is None:
+            raise RuntimeError("deduplicated notification could not be loaded")
+        return UUID(str(row[0])), False
 
     def next_due(self, *, now: datetime | None = None) -> PendingNotification | None:
         timestamp = _utc(now or utc_now()).isoformat()

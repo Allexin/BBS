@@ -326,16 +326,32 @@ class OperationsRepository:
             raise ValueError("bytes_added cannot be negative")
         with self._connection:
             row = self._connection.execute(
-                "SELECT operation_id FROM runs WHERE run_id = ? AND state = ?",
+                """SELECT operation_id, deadline_at, deadline_exceeded_at
+                FROM runs WHERE run_id = ? AND state = ?""",
                 (str(run_id), RunState.RUNNING),
             ).fetchone()
             if row is None:
                 raise StateTransitionError("only a running run can be finished")
             operation_id = str(row[0])
+            deadline_at = datetime.fromisoformat(str(row[1])) if row[1] is not None else None
+            completed_time = datetime.fromisoformat(timestamp)
+            overrun_seconds = (
+                max(0, int((completed_time - deadline_at).total_seconds()))
+                if deadline_at is not None
+                else None
+            )
+            exceeded_at = (
+                str(row[2])
+                if row[2] is not None
+                else deadline_at.isoformat()
+                if deadline_at is not None and overrun_seconds is not None and overrun_seconds > 0
+                else None
+            )
             self._connection.execute(
                 """UPDATE runs SET
                     state = ?, result = ?, finished_at = ?, exit_code = ?, snapshot_id = ?,
-                    bytes_added = ?, disk_offline_confirmed = ?
+                    bytes_added = ?, disk_offline_confirmed = ?, deadline_exceeded_at = ?,
+                    deadline_overrun_seconds = ?
                 WHERE run_id = ?""",
                 (
                     RunState.FINISHED,
@@ -345,6 +361,8 @@ class OperationsRepository:
                     snapshot_id,
                     bytes_added,
                     int(disk_offline_confirmed),
+                    exceeded_at,
+                    overrun_seconds if exceeded_at is not None else None,
                     str(run_id),
                 ),
             )

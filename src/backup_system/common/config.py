@@ -60,7 +60,7 @@ class CycleItem(StrictModel):
 class ScheduleConfig(StrictModel):
     cron: str
     timezone: str
-    deadline: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    deadline: str | None = Field(default=None, pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     cycle: tuple[CycleItem, ...] = Field(min_length=1)
 
     _valid_timezone = field_validator("timezone")(_validate_timezone)
