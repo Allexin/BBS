@@ -5,7 +5,7 @@ from uuid import UUID
 
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.executor.cancellation import CancellationRequested
-from backup_system.executor.lifecycle import LifecycleCleanupError
+from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
 from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
 
 RUN_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -71,3 +71,18 @@ def test_cooperative_cancellation_has_normalized_exit() -> None:
     assert events[-1]["result"] == "cancelled"
     assert events[-1]["exit_code"] == ExecutorExitCode.CANCELLED
     assert outcome.exit_code == ExecutorExitCode.CANCELLED
+
+
+def test_operation_failure_preserves_confirmed_offline_independently() -> None:
+    def fail() -> None:
+        raise LifecycleOperationError(RuntimeError("adapter failed"))
+
+    events, outcome = _run(fail)
+
+    assert [event["event"] for event in events[-2:]] == [
+        "disk_offline_confirmed",
+        "run_finished",
+    ]
+    assert events[-1]["result"] == "failed"
+    assert events[-1]["disk_offline_confirmed"] is True
+    assert outcome.exit_code == ExecutorExitCode.INTERNAL_ERROR

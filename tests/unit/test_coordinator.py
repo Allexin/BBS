@@ -14,7 +14,11 @@ from backup_system.common.smart import SmartMetrics
 from backup_system.executor.cancellation import CancellationRequested, CancellationToken
 from backup_system.executor.coordinator import ExecutorWindowsCoordinator
 from backup_system.executor.disk_control import DiskObservation, VerifiedDisk, VolumeObservation
-from backup_system.executor.lifecycle import ExecutorDiskLifecycle, MarkerExpectation
+from backup_system.executor.lifecycle import (
+    ExecutorDiskLifecycle,
+    LifecycleOperationError,
+    MarkerExpectation,
+)
 from backup_system.executor.smart_preflight import SmartPreflightObservation
 
 
@@ -158,7 +162,7 @@ def test_cancellation_during_smart_still_returns_disk_offline() -> None:
             cancellation.request()
             return observations
 
-    with pytest.raises(CancellationRequested):
+    with pytest.raises(LifecycleOperationError) as raised:
         _coordinator(
             calls,
             [],
@@ -170,6 +174,8 @@ def test_cancellation_during_smart_still_returns_disk_offline() -> None:
             smart_config=_smart_config(),
             action=lambda volume: calls.append("action"),
         )
+
+    assert isinstance(raised.value.primary_error, CancellationRequested)
 
     assert calls == [
         "lock",

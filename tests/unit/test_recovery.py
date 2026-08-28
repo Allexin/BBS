@@ -9,7 +9,7 @@ from backup_system.common.config import DiskConfig, SmartConfig
 from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.coordinator import ExecutorWindowsCoordinator
 from backup_system.executor.disk_control import DiskObservation, VerifiedDisk, VolumeObservation
-from backup_system.executor.lifecycle import ExecutorDiskLifecycle
+from backup_system.executor.lifecycle import ExecutorDiskLifecycle, LifecycleOperationError
 from backup_system.executor.recovery import ExecutorRecovery
 from backup_system.executor.smart_preflight import SmartPreflightObservation
 from backup_system.executor.vss_intent import VssIntentStore
@@ -126,12 +126,13 @@ def test_vss_cleanup_failure_retains_intent_but_still_confirms_offline(tmp_path:
     calls: list[object] = []
     store = _prepare_intent(tmp_path)
 
-    with pytest.raises(RuntimeError, match="VSS cleanup failed"):
+    with pytest.raises(LifecycleOperationError) as raised:
         ExecutorRecovery(
             coordinator=_coordinator(calls),
             intents=store,
             vss_cleaner=_Cleaner(calls, fail=True),
         ).run(job_id="job-1", disk=_disk())
 
+    assert str(raised.value.primary_error) == "VSS cleanup failed"
     assert calls == ["lock", "inspect", ("delete", SET_ID), "offline", "unlock"]
     assert store.load("job-1") is not None

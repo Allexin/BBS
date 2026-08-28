@@ -22,7 +22,7 @@ from backup_system.executor.disk_control import (
     DiskIdentityMismatchError,
     DiskNotFoundError,
 )
-from backup_system.executor.lifecycle import LifecycleCleanupError
+from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,6 +95,9 @@ class ExecutorRunReporter:
 def _failure_outcome(error: BaseException) -> ExecutorOutcome:
     if isinstance(error, LifecycleCleanupError):
         return ExecutorOutcome("failed", ExecutorExitCode.DISK_OFFLINE_FAILED, False)
+    if isinstance(error, LifecycleOperationError):
+        primary = _failure_outcome(error.primary_error)
+        return ExecutorOutcome(primary.result, primary.exit_code, True)
     if isinstance(error, DiskNotFoundError):
         return ExecutorOutcome("failed", ExecutorExitCode.DISK_NOT_FOUND, False)
     if isinstance(error, DiskIdentityMismatchError):

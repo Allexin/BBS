@@ -9,6 +9,7 @@ from backup_system.executor.disk_control import DiskObservation, VerifiedDisk, V
 from backup_system.executor.lifecycle import (
     ExecutorDiskLifecycle,
     LifecycleCleanupError,
+    LifecycleOperationError,
     MarkerExpectation,
     MarkerVerificationError,
     verify_marker,
@@ -77,10 +78,11 @@ def test_primary_failure_is_preserved_when_cleanup_succeeds() -> None:
     def fail(marker: MarkerExpectation) -> None:
         raise MarkerVerificationError("wrong marker")
 
-    with pytest.raises(MarkerVerificationError, match="wrong marker"):
+    with pytest.raises(LifecycleOperationError) as raised:
         ExecutorDiskLifecycle(control, marker_verifier=fail).run(
             _config(), _marker(), lambda volume: None
         )
+    assert isinstance(raised.value.primary_error, MarkerVerificationError)
     assert control.calls[-1] == "offline"
 
 
@@ -128,9 +130,9 @@ def test_recover_still_offlines_disk_after_vss_cleanup_failure() -> None:
     def fail_cleanup() -> None:
         raise primary
 
-    with pytest.raises(RuntimeError, match="VSS cleanup failed") as raised:
+    with pytest.raises(LifecycleOperationError) as raised:
         ExecutorDiskLifecycle(control).recover(_config(), pre_offline_cleanup=fail_cleanup)
-    assert raised.value is primary
+    assert raised.value.primary_error is primary
     assert control.calls == ["inspect", "offline"]
 
 

@@ -30,6 +30,12 @@ class LifecycleCleanupError(RuntimeError):
         self.primary_error = primary_error
 
 
+class LifecycleOperationError(RuntimeError):
+    def __init__(self, primary_error: BaseException) -> None:
+        super().__init__("disk operation failed after offline was confirmed")
+        self.primary_error = primary_error
+
+
 @dataclass(frozen=True, slots=True)
 class MarkerExpectation:
     file: str
@@ -74,22 +80,24 @@ class ExecutorDiskLifecycle:
         observation = self._control.inspect(config)
         verified = observation.verified
         primary_error: BaseException | None = None
+        value: T | None = None
         try:
             self._control.bring_online(config, verified)
             volume = self._control.ensure_repository_path(config, verified)
             self._marker_verifier(marker)
-            return LifecycleSuccess(action(volume))
+            value = action(volume)
         except BaseException as error:
             primary_error = error
-            raise
-        finally:
-            try:
-                self._control.take_offline(config, verified)
-            except BaseException as cleanup_error:
-                raise LifecycleCleanupError(
-                    "backup disk offline could not be confirmed",
-                    primary_error=primary_error,
-                ) from cleanup_error
+        try:
+            self._control.take_offline(config, verified)
+        except BaseException as cleanup_error:
+            raise LifecycleCleanupError(
+                "backup disk offline could not be confirmed",
+                primary_error=primary_error,
+            ) from cleanup_error
+        if primary_error is not None:
+            raise LifecycleOperationError(primary_error) from primary_error
+        return LifecycleSuccess(value)
 
     def recover(
         self,
@@ -112,7 +120,7 @@ class ExecutorDiskLifecycle:
                 primary_error=primary_error,
             ) from cleanup_error
         if primary_error is not None:
-            raise primary_error
+            raise LifecycleOperationError(primary_error) from primary_error
         return LifecycleSuccess(None)
 
 
