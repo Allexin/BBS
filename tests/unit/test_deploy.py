@@ -4,7 +4,12 @@ from pathlib import Path
 import pytest
 
 from backup_system.deployment import deploy as deploy_module
-from backup_system.deployment.deploy import DeploymentError, build_parser, deploy
+from backup_system.deployment.deploy import (
+    DeploymentError,
+    build_parser,
+    deploy,
+    initialize_stable,
+)
 
 
 def test_deploy_cli_requires_explicit_stable_root() -> None:
@@ -43,6 +48,25 @@ def test_deploy_requires_existing_stable_marker(tmp_path: Path) -> None:
             nssm=tmp_path / "nssm.exe",
             uv=tmp_path / "uv.exe",
         )
+
+
+def test_initialize_stable_preserves_credentials_and_creates_disabled_config(
+    tmp_path: Path,
+) -> None:
+    stable = tmp_path / "stable"
+    config = stable / "data" / "config"
+    config.mkdir(parents=True)
+    credentials = config / "telegram.json"
+    credentials.write_text("secret-test-value", encoding="ascii")
+
+    initialize_stable(stable)
+
+    assert (stable / "backup-system.root").is_file()
+    assert "jobs: []" in (config / "manager.yaml").read_text(encoding="utf-8")
+    assert "disks: []" in (config / "smart.yaml").read_text(encoding="utf-8")
+    assert credentials.read_text(encoding="ascii") == "secret-test-value"
+    with pytest.raises(DeploymentError, match="requires missing"):
+        initialize_stable(stable)
 
 
 def test_deploy_requires_stopped_switches_preserves_data_and_waits_for_manual_start(

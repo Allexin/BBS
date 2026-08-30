@@ -52,6 +52,9 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_sta
 
 The wrapper requires an approved `nssm.exe` in the elevated PATH. It looks for uv in
 Dev `.venv\Scripts\uv.exe`, `.poc-work\tools\uv\uv.exe`, and then PATH.
+For the first deployment only, add `-Initialize`. This creates the root marker and
+minimal disabled-job manager/SMART configs only when all three files are absent; it
+does not overwrite an existing Telegram credentials file.
 
 The tool requests UAC elevation and refuses to proceed unless the service is already
 stopped. It copies only the release manifest, builds a new frozen non-editable `.venv`,

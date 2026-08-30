@@ -18,6 +18,7 @@ from uuid import uuid4
 from backup_system.deployment.manifest import load_deployment_manifest, stage_release
 from backup_system.deployment.nssm import configure_service
 from backup_system.deployment.security import apply_stable_acls
+from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 
 SERVICE_STOPPED = "SERVICE_STOPPED"
 SERVICE_RUNNING = "SERVICE_RUNNING"
@@ -57,7 +58,46 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--nginx-account", required=True)
     parser.add_argument("--nssm", type=Path)
     parser.add_argument("--uv", type=Path)
+    parser.add_argument("--initialize", action="store_true")
     return parser
+
+
+def initialize_stable(stable: Path) -> None:
+    stable = stable.resolve(strict=True)
+    marker = stable / "backup-system.root"
+    config = stable / "data" / "config"
+    manager = config / "manager.yaml"
+    smart = config / "smart.yaml"
+    if marker.exists() or manager.exists() or smart.exists():
+        raise DeploymentError(
+            "initialization requires missing marker, manager.yaml, and smart.yaml"
+        )
+    config.mkdir(parents=True, exist_ok=True)
+    manager.write_text(
+        """schema_version: 1
+timezone: Europe/Samara
+scheduler: {poll_seconds: 5}
+monitoring:
+  volumes: {poll_seconds: 60, items: []}
+jobs: []
+telegram:
+  enabled: false
+  credentials_file: telegram.json
+  daily_report_cron: '0 9 * * *'
+  daily_report_timezone: Europe/Samara
+  stale_manager_minutes: 10
+""",
+        encoding="utf-8",
+    )
+    smart.write_text(
+        """schema_version: 1
+per_disk_timeout_seconds: 30
+stale_after_hours: 48
+disks: []
+""",
+        encoding="utf-8",
+    )
+    marker.write_text("BBS Stable root\n", encoding="ascii")
 
 
 def deploy(
@@ -107,7 +147,7 @@ def deploy(
             if prepared.exists():
                 shutil.move(str(prepared), target)
         switched = True
-        (stable / "data" / "public").mkdir(parents=True, exist_ok=True)
+        initialize_data_layout(RuntimeLayout(stable))
         apply_stable_acls(stable, nginx_account=nginx_account)
         configure_service(nssm=nssm, service_name=service_name, root=stable)
         print(
@@ -238,6 +278,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     nssm = arguments.nssm or arguments.stable / "bin" / "nssm.exe"
     uv = arguments.uv or Path(shutil.which("uv") or "uv.exe")
     try:
+        if arguments.initialize:
+            initialize_stable(arguments.stable)
         revision = deploy(
             source=arguments.source,
             stable=arguments.stable,

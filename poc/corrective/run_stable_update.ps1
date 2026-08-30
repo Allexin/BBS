@@ -5,7 +5,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$NginxAccount,
 
-    [string]$Service = 'BBS'
+    [string]$Service = 'BBS',
+
+    [switch]$Initialize
 )
 
 $ErrorActionPreference = 'Stop'
@@ -35,13 +37,20 @@ if ([string]::IsNullOrWhiteSpace($uv)) {
     throw 'Approved uv.exe was not found in Dev, .poc-work\tools\uv, or PATH.'
 }
 
-& $python -m backup_system.deployment.deploy `
-    --source $repo `
-    --stable $Stable `
-    --service $Service `
-    --nginx-account $NginxAccount `
-    --nssm $nssm `
-    --uv $uv
+$deployArguments = @(
+    '-m', 'backup_system.deployment.deploy',
+    '--source', $repo,
+    '--stable', $Stable,
+    '--service', $Service,
+    '--nginx-account', $NginxAccount,
+    '--nssm', $nssm,
+    '--uv', $uv
+)
+if ($Initialize) {
+    $deployArguments += '--initialize'
+}
+
+& $python @deployArguments
 
 if ($LASTEXITCODE -ne 0) {
     throw "Stable update failed with exit code $LASTEXITCODE"
