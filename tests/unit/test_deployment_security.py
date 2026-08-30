@@ -4,9 +4,17 @@ import pytest
 
 from backup_system.deployment.security import (
     StableAclError,
+    _normalized_dacl,
     apply_stable_acls,
     stable_acl_targets,
 )
+
+
+def test_readback_normalization_ignores_only_auto_inherited_flag() -> None:
+    expected = "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+    actual = "D:PAI(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+    assert _normalized_dacl(actual) == _normalized_dacl(expected)
+    assert _normalized_dacl(actual.replace(";;;BA", ";;;BU")) != _normalized_dacl(expected)
 
 
 def test_policy_protects_data_and_limits_public_reader() -> None:

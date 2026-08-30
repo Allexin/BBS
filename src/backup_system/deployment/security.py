@@ -109,7 +109,7 @@ class _Pywin32SecurityBackend:
             )
         except OSError as error:
             raise StableAclError(f"cannot apply ACL to {path.name}") from error
-        if actual_text != expected_text:
+        if _normalized_dacl(actual_text) != _normalized_dacl(expected_text):
             raise StableAclError(
                 f"ACL read-back mismatch for {path.name}; "
                 f"expected={expected_text!r}; actual={actual_text!r}"
@@ -119,3 +119,8 @@ class _Pywin32SecurityBackend:
 def _is_reparse(path: Path) -> bool:
     attributes = getattr(path.lstat(), "st_file_attributes", 0)
     return bool(attributes & _FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _normalized_dacl(value: str) -> str:
+    """Ignore Windows' informational auto-inherited flag, not ACE semantics."""
+    return value.replace("D:PAI", "D:P", 1)
