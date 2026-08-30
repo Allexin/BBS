@@ -192,7 +192,6 @@ def test_restore_latest_is_pinned_before_a_later_backup_runs(tmp_path: Path) -> 
         created_at=accepted_at + timedelta(milliseconds=1),
         kind="run",
         job_id="data",
-        operation="backup",
     )
     publish_command(root, restore)
     publish_command(root, backup)
@@ -248,7 +247,6 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         created_at=datetime.now(UTC),
         kind="run",
         job_id="data",
-        operation="backup",
     )
     publish_command(root, command)
     try:
@@ -303,13 +301,12 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
     application.initialize()
     publish_command(
         root,
-        RunCommand(
+            RunCommand(
             command_id=new_command_id(),
             created_at=datetime.now(UTC),
             kind="run",
             job_id="data",
-            operation="backup",
-        ),
+            ),
     )
 
     async def scenario() -> None:

@@ -36,18 +36,44 @@ def test_run_command_is_enqueued_and_completed(tmp_path: Path) -> None:
             created_at=datetime.now(UTC),
             kind="run",
             job_id="data",
-            operation="backup",
         )
         publish_command(layout.root, command)
         spool = CommandSpool(layout)
         assert spool.accept_incoming() == (command,)
         outcomes = CommandProcessor(
-            spool, operations, cancel_current=lambda: None
+            spool,
+            operations,
+            cancel_current=lambda: None,
+            default_operations={"data": "backup"},
         ).process_accepted()
         assert outcomes[0].disposition is CommandDisposition.ENQUEUED
         assert (layout.commands_completed / f"{command.command_id}.json").is_file()
         row = connection.execute("SELECT deduplication_key, state FROM operations").fetchone()
         assert row == (f"command:{command.command_id}", "queued")
+    finally:
+        connection.close()
+
+
+def test_generic_run_resolves_smart_test_from_job_configuration(tmp_path: Path) -> None:
+    layout, operations, connection = _runtime(tmp_path)
+    try:
+        command = RunCommand(
+            command_id=uuid4(),
+            created_at=datetime.now(UTC),
+            kind="run",
+            job_id="data",
+        )
+        publish_command(layout.root, command)
+        spool = CommandSpool(layout)
+        spool.accept_incoming()
+        outcome = CommandProcessor(
+            spool,
+            operations,
+            cancel_current=lambda: None,
+            default_operations={"data": "smart-test"},
+        ).process_accepted()[0]
+        assert outcome.disposition is CommandDisposition.ENQUEUED
+        assert connection.execute("SELECT kind FROM operations").fetchone() == ("smart-test",)
     finally:
         connection.close()
 
@@ -60,7 +86,6 @@ def test_replayed_accepted_command_is_deduplicated(tmp_path: Path) -> None:
             created_at=datetime.now(UTC),
             kind="run",
             job_id="data",
-            operation="backup",
         )
         publish_command(layout.root, command)
         spool = CommandSpool(layout)
@@ -72,7 +97,10 @@ def test_replayed_accepted_command_is_deduplicated(tmp_path: Path) -> None:
             trigger_source="manual",
         )
         outcome = CommandProcessor(
-            spool, operations, cancel_current=lambda: None
+            spool,
+            operations,
+            cancel_current=lambda: None,
+            default_operations={"data": "backup"},
         ).process_accepted()[0]
         assert outcome.disposition is CommandDisposition.DEDUPLICATED
         assert outcome.operation_id == existing.operation_id
@@ -161,7 +189,6 @@ def test_restore_resolution_does_not_block_following_accepted_command(tmp_path: 
             created_at=datetime.now(UTC),
             kind="run",
             job_id="data",
-            operation="backup",
         )
         publish_command(layout.root, rejected)
         publish_command(layout.root, accepted)
@@ -169,7 +196,10 @@ def test_restore_resolution_does_not_block_following_accepted_command(tmp_path: 
         spool.accept_incoming()
 
         outcomes = CommandProcessor(
-            spool, operations, cancel_current=lambda: None
+            spool,
+            operations,
+            cancel_current=lambda: None,
+            default_operations={"data": "backup"},
         ).process_accepted()
         assert [item.disposition for item in outcomes] == [
             CommandDisposition.ENQUEUED,

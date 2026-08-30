@@ -42,10 +42,12 @@ class CommandProcessor:
         operations: OperationsRepository,
         *,
         cancel_current: Callable[[], None],
+        default_operations: dict[str, str] | None = None,
     ) -> None:
         self._spool = spool
         self._operations = operations
         self._cancel_current = cancel_current
+        self._default_operations = default_operations or {}
 
     def process_accepted(self) -> tuple[ProcessedCommand, ...]:
         processed: list[ProcessedCommand] = []
@@ -66,8 +68,11 @@ class CommandProcessor:
         self, command: RunCommand | QueueRemoveCommand | CancelCurrentCommand
     ) -> ProcessedCommand:
         if isinstance(command, RunCommand):
+            operation = command.operation or self._default_operations.get(command.job_id)
+            if operation is None:
+                raise ValueError("job has no configured default operation")
             request: dict[str, object] | None = None
-            if command.operation == "restore":
+            if operation == "restore":
                 assert command.version is not None
                 assert command.path is not None
                 assert command.target is not None
@@ -82,7 +87,7 @@ class CommandProcessor:
             enqueue_result = self._operations.enqueue(
                 deduplication_key=f"command:{command.command_id}",
                 job_id=command.job_id,
-                kind="resolve-restore" if command.operation == "restore" else command.operation,
+                kind="resolve-restore" if operation == "restore" else operation,
                 mode=command.mode,
                 request=request,
                 trigger_source="manual",

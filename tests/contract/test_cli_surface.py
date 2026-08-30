@@ -2,6 +2,7 @@ import argparse
 
 import pytest
 
+from backup_system.common.commands import RunCommand
 from backup_system.ctl.cli import build_parser as ctl_parser
 from backup_system.ctl.cli import command_from_arguments
 from backup_system.executor.cli import build_parser as executor_parser
@@ -67,3 +68,9 @@ def test_mutating_cli_builds_a_typed_spool_command(arguments: list[str]) -> None
 
 def test_read_only_cli_does_not_build_a_spool_command() -> None:
     assert command_from_arguments(ctl_parser().parse_args(["status"])) is None
+
+
+def test_generic_run_leaves_operation_resolution_to_manager() -> None:
+    command = command_from_arguments(ctl_parser().parse_args(["run", "disk-health"]))
+    assert isinstance(command, RunCommand)
+    assert command.operation is None

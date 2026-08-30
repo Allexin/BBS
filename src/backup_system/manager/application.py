@@ -81,6 +81,7 @@ class ManagerApplication:
         self._active_task: asyncio.Task[None] | None = None
         self._started_at = utc_now()
         self._last_health = "unknown"
+        selected_job_kinds = job_kinds or {}
         connection = operations.connection
         notifications = NotificationRepository(connection)
         self._spool = CommandSpool(layout)
@@ -88,6 +89,9 @@ class ManagerApplication:
             self._spool,
             operations,
             cancel_current=self.request_executor_cancel,
+            default_operations={
+                job.id: job.schedule.cycle[0].operation for job in config.jobs
+            },
         )
         self._schedules = ScheduleStore(
             connection,
@@ -103,7 +107,7 @@ class ManagerApplication:
         )
         self._projection_builder = ProjectionBuilder(
             connection,
-            job_kinds=job_kinds,
+            job_kinds=selected_job_kinds,
             job_deadlines={job.id: job.schedule.deadline for job in config.jobs},
         )
         self._projection_publisher = ProjectionPublisher(layout.public)

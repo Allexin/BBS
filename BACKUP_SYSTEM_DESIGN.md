@@ -806,6 +806,13 @@ alert для disk lifecycle failure, и не скрывается причино
 создаёт одну ручную operation в начале ожидающей очереди. Текущий executor команда
 не прерывает.
 
+`backupctl run` адресует job, а не её внутреннюю operation: CLI не выбирает тип
+работы и не включает поле `operation` в spool-команду. Manager разрешает operation
+по первой разрешённой operation валидированного `schedule.cycle` job (`backup` для
+обычной data job, `prune` для maintenance и `smart-test` для отдельной SMART job).
+Поэтому добавление нового разрешённого типа job не требует от оператора знания его
+executor-команды.
+
 Интерактивная команда, создавшая operation (`run`, `check`, `restore`,
 `restore-test`, `repair-mirror`, `recover`), по умолчанию остаётся подключённой к её
 статусу до terminal result. Пока operation ожидает, CLI показывает активную job,
@@ -2787,15 +2794,15 @@ subset cursor начинает новый круг с `1/4`, а все теку�
   "command_id": "<uuid4>",
   "created_at": "<rfc3339-utc>",
   "kind": "run",
-  "job_id": "data",
-  "operation": "backup"
+  "job_id": "data"
 }
 ```
 
 Допустимые `kind` v1:
 
-- `run` с job operation
-  `backup|check|prune|restore|restore-test|repair-mirror|recover`;
+- `run` без operation для запуска job; manager разрешает её по типу job;
+- `run` с явной operation `check|restore|restore-test|repair-mirror|recover` для
+  специализированных CLI-команд;
 - `cancel-current` без `job_id` и operation;
 - `queue-remove` с единственным `operation_id` UUID4.
 

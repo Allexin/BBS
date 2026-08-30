@@ -85,15 +85,14 @@ def command_from_arguments(arguments: argparse.Namespace) -> CommandBase | None:
             operation_id=UUID(arguments.operation_id),
         )
     operations = {
-        "run": "backup",
         "check": "check",
         "restore": "restore",
         "restore-test": "restore-test",
         "repair-mirror": "repair-mirror",
         "recover": "recover",
     }
-    operation = operations.get(arguments.command)
-    if operation is None:
+    operation = None if arguments.command == "run" else operations.get(arguments.command)
+    if arguments.command != "run" and operation is None:
         return None
     values: dict[str, object] = {
         "command_id": command_id,

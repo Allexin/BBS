@@ -43,9 +43,7 @@ class CommandBase(BaseModel):
 class RunCommand(CommandBase):
     kind: Literal["run"]
     job_id: str
-    operation: Literal[
-        "backup", "check", "prune", "restore", "restore-test", "repair-mirror", "recover"
-    ]
+    operation: Literal["check", "restore", "restore-test", "repair-mirror", "recover"] | None = None
     mode: Literal["subset", "full"] | None = None
     version: str | None = None
     path: str | None = None

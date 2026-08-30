@@ -20,7 +20,6 @@ def _command(*, created_at: datetime | None = None) -> RunCommand:
         created_at=created_at or datetime.now(UTC),
         kind="run",
         job_id="data",
-        operation="backup",
     )
 
 
