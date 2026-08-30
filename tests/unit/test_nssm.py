@@ -8,6 +8,7 @@ from backup_system.deployment.nssm import (
     INFINITE_WINDOWS_WAIT_MS,
     STOP_METHOD_SKIP,
     NssmConfigurationError,
+    _output,
     configure_service,
     service_settings,
 )
@@ -112,3 +113,8 @@ def test_registry_readback_mismatch_blocks_configuration(tmp_path: Path) -> None
             write_registry=lambda name, value: None,
             read_registry=lambda name: 1,
         )
+
+
+def test_nssm_224_utf16_style_output_is_normalized() -> None:
+    encoded = "S\x00E\x00R\x00V\x00I\x00C\x00E\x00_\x00S\x00T\x00O\x00P\x00P\x00E\x00D\x00"
+    assert _output(encoded) == "SERVICE_STOPPED"

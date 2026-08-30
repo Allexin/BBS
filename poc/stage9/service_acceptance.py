@@ -15,13 +15,36 @@ from uuid import uuid4
 
 SERVICE_STOPPED = "SERVICE_STOPPED"
 SERVICE_RUNNING = "SERVICE_RUNNING"
+SERVICE_STOP_PENDING = "SERVICE_STOP_PENDING"
 
 
 def run(argv: list[str], *, check: bool = True) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(argv, check=False, capture_output=True, text=True, shell=False)
     if check and result.returncode != 0:
-        raise RuntimeError(f"command failed ({result.returncode}): {result.stderr.strip()}")
+        raise RuntimeError(f"command failed ({result.returncode}): {output(result)}")
     return result
+
+
+def output(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stdout + "\n" + result.stderr).replace("\x00", "").strip()
+
+
+def wait_status(nssm: Path, service: str, expected: str, timeout: float = 30) -> None:
+    deadline = time.monotonic() + timeout
+    status = "unknown"
+    while time.monotonic() < deadline:
+        status = output(run([str(nssm), "status", service]))
+        if status == expected:
+            return
+        time.sleep(0.1)
+    raise RuntimeError(f"service remained {status}; expected {expected}")
+
+
+def stop_service(nssm: Path, service: str) -> None:
+    result = run([str(nssm), "stop", service], check=False)
+    if result.returncode != 0 and SERVICE_STOP_PENDING not in output(result):
+        raise RuntimeError(f"service stop failed ({result.returncode}): {output(result)}")
+    wait_status(nssm, service, SERVICE_STOPPED)
 
 
 def set_value(nssm: Path, service: str, name: str, *values: str) -> None:
@@ -78,7 +101,7 @@ def main() -> int:
         run([str(nssm), "start", cleanup_service])
         wait_file(cleanup.with_suffix(".ready"))
         started = time.monotonic()
-        run([str(nssm), "stop", cleanup_service])
+        stop_service(nssm, cleanup_service)
         elapsed = time.monotonic() - started
         if cleanup.read_text(encoding="ascii").strip() != "cleanup-complete":
             raise RuntimeError("cooperative cleanup marker was not completed")
@@ -99,7 +122,7 @@ def main() -> int:
         wait_file(attempts)
         time.sleep(3)
         starts = attempts.read_text(encoding="ascii").splitlines()
-        status = run([str(nssm), "status", invalid_service]).stdout.strip()
+        status = output(run([str(nssm), "status", invalid_service]))
         if starts != ["start"] or status != SERVICE_STOPPED:
             raise RuntimeError("config-invalid service entered a restart loop")
         result.update(

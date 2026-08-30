@@ -107,7 +107,7 @@ def verify_service_settings(
         if setting.subparameter is not None:
             command.append(setting.subparameter)
         result = _checked(runner, command)
-        actual = result.stdout.strip()
+        actual = _output(result.stdout)
         if actual.casefold() != setting.value.casefold():
             label = f"{setting.name} {setting.subparameter or ''}".strip()
             raise NssmConfigurationError(
@@ -158,10 +158,14 @@ def _checked(runner: CommandRunner, argv: Sequence[str]) -> subprocess.Completed
     result = runner(argv)
     if result.returncode != 0:
         raise NssmConfigurationError(
-            f"NSSM command failed ({result.returncode}): {result.stderr.strip()}"
+            f"NSSM command failed ({result.returncode}): {_output(result.stderr)}"
         )
     return result
 
 
 def _run(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, check=False, capture_output=True, text=True, shell=False)
+
+
+def _output(value: str) -> str:
+    return value.replace("\x00", "").strip()

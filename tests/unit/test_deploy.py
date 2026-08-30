@@ -104,3 +104,25 @@ def test_deploy_stops_switches_preserves_data_and_restarts(
     assert calls == ["stop", "prepare", "prepare", "configure", "start"]
     assert config.read_text(encoding="ascii") == "stable-data"
     assert not (stable / "app/old.txt").exists()
+
+
+def test_stop_pending_is_waited_as_cooperative_shutdown(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    responses = iter(
+        (
+            subprocess.CompletedProcess([], 0, "SERVICE_RUNNING\x00", ""),
+            subprocess.CompletedProcess([], 1, "", "SERVICE_STOP_PENDING\x00"),
+        )
+    )
+    waited: list[str] = []
+    monkeypatch.setattr(deploy_module, "_run", lambda argv, env=None: next(responses))
+    monkeypatch.setattr(
+        deploy_module,
+        "_wait_for_status",
+        lambda nssm, service, expected, attempts: waited.append(expected),
+    )
+
+    deploy_module._stop_service_if_installed(tmp_path / "nssm.exe", "BBS-Test")
+
+    assert waited == ["SERVICE_STOPPED"]

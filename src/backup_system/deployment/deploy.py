@@ -20,6 +20,7 @@ from backup_system.deployment.nssm import configure_service
 
 SERVICE_STOPPED = "SERVICE_STOPPED"
 SERVICE_RUNNING = "SERVICE_RUNNING"
+SERVICE_STOP_PENDING = "SERVICE_STOP_PENDING"
 SEE_MASK_NOCLOSEPROCESS = 0x00000040
 INFINITE = 0xFFFFFFFF
 
@@ -123,9 +124,13 @@ def _stop_service_if_installed(nssm: Path, service_name: str) -> None:
     status = _run([str(nssm), "status", service_name])
     if status.returncode != 0:
         return
-    if status.stdout.strip() == SERVICE_STOPPED:
+    if _command_output(status) == SERVICE_STOPPED:
         return
-    _run_checked([str(nssm), "stop", service_name])
+    stopped = _run([str(nssm), "stop", service_name])
+    if stopped.returncode != 0 and SERVICE_STOP_PENDING not in _command_output(stopped):
+        raise DeploymentError(
+            f"service stop failed ({stopped.returncode}): {_command_output(stopped)}"
+        )
     _wait_for_status(nssm, service_name, SERVICE_STOPPED, attempts=None)
 
 
@@ -134,7 +139,7 @@ def _wait_for_status(
 ) -> None:
     count = 0
     while True:
-        status = _run_checked([str(nssm), "status", service_name]).stdout.strip()
+        status = _command_output(_run_checked([str(nssm), "status", service_name]))
         if status == expected:
             return
         count += 1
@@ -160,6 +165,10 @@ def _run(
     return subprocess.run(
         argv, check=False, capture_output=True, text=True, shell=False, env=env
     )
+
+
+def _command_output(result: subprocess.CompletedProcess[str]) -> str:
+    return (result.stdout + "\n" + result.stderr).replace("\x00", "").strip()
 
 
 def _is_administrator() -> bool:
