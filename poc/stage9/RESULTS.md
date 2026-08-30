@@ -4,8 +4,8 @@ Automated unit and integration coverage verifies bootstrap diagnostics, cooperat
 shutdown ordering, Job Object kill-on-close, release staging, and NSSM configuration
 read-back.
 
-The machine-level NSSM acceptance is pending. Place the approved `nssm.exe` at
-`.tools/nssm/nssm.exe`, then run elevated:
+The machine-level NSSM acceptance is pending. Ensure the approved `nssm.exe` is
+available through the elevated process `PATH`, then run elevated:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage9\run_service_acceptance.ps1
