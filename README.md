@@ -10,4 +10,5 @@ Operator documentation:
 
 - `docs/CONFIGURATION_MANUAL.md` — configuration and feature setup;
 - `docs/OPERATIONS.md` — service lifecycle, deployment, and recovery;
-- `docs/DISASTER_RECOVERY.md` — disaster recovery procedures.
+- `docs/DISASTER_RECOVERY.md` — disaster recovery procedures;
+- `docs/STAGE10_ACCEPTANCE.md` — current end-to-end acceptance evidence.

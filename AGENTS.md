@@ -29,5 +29,6 @@ BBS — система резервного копирования для Window
 ## Текущий статус
 
 Этапы 0–9 завершены. Корректирующая интеграция manager runtime по
-`docs/CORRECTIVE_ACTIONS_BEFORE_STAGE10.md` закрыта. Следующий этап — сквозная
-приёмка v1 (этап 10); реальные production jobs создаются только после неё.
+`docs/CORRECTIVE_ACTIONS_BEFORE_STAGE10.md` закрыта. Выполняется сквозная приёмка v1
+(этап 10) по `docs/STAGE10_ACCEPTANCE.md`; реальные production jobs создаются только
+после неё.
