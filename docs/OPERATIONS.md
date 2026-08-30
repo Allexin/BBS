@@ -73,11 +73,12 @@ waits for `SERVICE_RUNNING`. Stable
 revision is reported for traceability.
 
 `--nginx-account` is mandatory and must name the Windows account used by nginx.
-One-time administrative bootstrap protects Stable and `data`, grants the nginx
-account read access only to `data\public`, and grants the explicitly trusted local
-developer account write access only to `app`, `.venv`, and `web`. This trust boundary
-allows that account to replace code later executed as LocalSystem and is specific to
-this local Dev workflow.
+One-time administrative bootstrap grants nginx read access only to `data\public` and
+grants the explicitly trusted local deployment account full control over the entire
+Stable tree. This deliberately permissive boundary is specific to this local Dev
+environment: the same account can already replace code later executed as LocalSystem.
+Do not reuse this ACL policy for a production installation with untrusted interactive
+users.
 
 There is no automatic rollback. A failure after the switch leaves the new files and
 the actual stopped/failed service state visible. Correct the cause and deploy again.

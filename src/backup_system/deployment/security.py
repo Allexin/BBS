@@ -45,18 +45,23 @@ def stable_acl_targets(
     if not nginx_sid.startswith("S-"):
         raise StableAclError("nginx account SID is invalid")
     administrative = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-    deployment_traverse = (
-        f"(A;;GX;;;{deployment_sid})"
+    deployment_full = (
+        f"(A;OICI;FA;;;{deployment_sid})"
         if deployment_sid is not None and deployment_sid != nginx_sid
         else ""
     )
     return (
-        AclTarget(".", f"D:P{administrative}(A;OICI;GRGX;;;BU)"),
+        AclTarget(
+            ".", f"D:P{administrative}{deployment_full}(A;OICI;GRGX;;;BU)"
+        ),
         AclTarget(
             "data",
-            f"D:P{administrative}(A;;GX;;;{nginx_sid}){deployment_traverse}",
+            f"D:P{administrative}{deployment_full}(A;;GX;;;{nginx_sid})",
         ),
-        AclTarget("data/public", f"D:P{administrative}(A;OICI;GRGX;;;{nginx_sid})"),
+        AclTarget(
+            "data/public",
+            f"D:P{administrative}{deployment_full}(A;OICI;GRGX;;;{nginx_sid})",
+        ),
     )
 
 

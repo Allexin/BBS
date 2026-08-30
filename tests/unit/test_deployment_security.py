@@ -65,7 +65,7 @@ def test_acl_application_rejects_missing_public_tree(tmp_path: Path) -> None:
         apply_stable_acls(stable, nginx_account="BBS-Web", backend=_Backend())
 
 
-def test_deployment_account_can_update_application_and_config_trees(tmp_path: Path) -> None:
+def test_deployment_account_has_full_control_over_stable_tree(tmp_path: Path) -> None:
     stable = tmp_path / "Stable"
     for relative in ("data/public", "data/config", "app", ".venv", "web"):
         (stable / relative).mkdir(parents=True)
@@ -87,5 +87,6 @@ def test_deployment_account_can_update_application_and_config_trees(tmp_path: Pa
     application = backend.applied[-4:]
     assert [name for name, _ in application] == ["app", ".venv", "web", "config"]
     assert all(";;;S-1-5-21-456)" in sddl for _, sddl in application)
-    data_sddl = next(sddl for name, sddl in backend.applied if name == "data")
-    assert "(A;;GX;;;S-1-5-21-456)" in data_sddl
+    protected_targets = backend.applied[:3]
+    assert [name for name, _ in protected_targets] == ["data", "public", "Stable"]
+    assert all("(A;OICI;FA;;;S-1-5-21-456)" in sddl for _, sddl in protected_targets)

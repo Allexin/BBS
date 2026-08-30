@@ -14,11 +14,10 @@ Status: passed on the Stable composition.
 
 Status: passed against the actual test Stable tree.
 
-- protected root, `data`, and `data/public` descriptors passed semantic read-back;
-- the explicitly trusted local deployment account may manage `data\config`, including
-  `telegram.json`, as an accepted local security boundary;
-- its application write access remains limited to `app`, `.venv`, and `web`; `bin`,
-  state, and logs remain protected;
+- root, `data`, and `data/public` descriptors passed semantic read-back;
+- the explicitly trusted local deployment account has full control over the complete
+  Stable tree, including `telegram.json`, native tools, state, and logs;
+- this deliberately permissive policy is accepted only for the local Dev environment;
 - non-admin application update completed successfully without changing `data` or
   `bin`.
 
