@@ -178,6 +178,7 @@ class SmartHistoryRepository:
                         payload={
                             "disk": public_disk_id,
                             "indicator": condition,
+                            "current": _condition_value(metrics, condition),
                             "severity": SmartSeverity.CRITICAL,
                         },
                         created_at=observed_at,
@@ -262,3 +263,11 @@ def _absolute_critical_conditions(metrics: SmartMetrics | None) -> set[str]:
         if value is not None and value > 0:
             conditions.add(field)
     return conditions
+
+
+def _condition_value(metrics: SmartMetrics, condition: str) -> int | bool | None:
+    fields = {
+        "smart_overall_failed": "overall_passed",
+        "nvme_critical_warning": "nvme_critical_warning",
+    }
+    return getattr(metrics, fields.get(condition, condition), None)

@@ -123,5 +123,7 @@ def test_first_absolute_critical_condition_alerts_once(tmp_path: Path) -> None:
         assert connection.execute(
             "SELECT kind FROM notifications ORDER BY created_at"
         ).fetchall() == [("smart_critical_condition",)]
+        payload = connection.execute("SELECT payload_json FROM notifications").fetchone()[0]
+        assert '"current":4' in payload
     finally:
         connection.close()

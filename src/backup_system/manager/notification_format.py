@@ -38,6 +38,15 @@ def render_notification(notification: PendingNotification) -> str:
                 f"Severity: {_text(payload, 'severity')}",
             )
         )
+    if notification.kind == "smart_critical_condition":
+        return "\n".join(
+            (
+                f"SMART critical condition: {_text(payload, 'disk')}",
+                f"Indicator: {_text(payload, 'indicator')}",
+                f"Current value: {_text(payload, 'current')}",
+                "This is an absolute condition, not only a trend change",
+            )
+        )
     if notification.kind == "schedule_overlap":
         return "\n".join(
             (

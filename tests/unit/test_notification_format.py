@@ -59,6 +59,23 @@ def test_deadline_and_smart_messages_are_bounded_structured_text() -> None:
     assert "Change: 0 -> 1" in smart
 
 
+def test_absolute_smart_critical_message_is_supported() -> None:
+    message = render_notification(
+        _notification(
+            "smart_critical_condition",
+            {
+                "disk": "disk-0123456789ab",
+                "indicator": "pending_sectors",
+                "current": 4,
+                "severity": "critical",
+            },
+        )
+    )
+    assert "SMART critical condition: disk-0123456789ab" in message
+    assert "Indicator: pending_sectors" in message
+    assert "Current value: 4" in message
+
+
 def test_unknown_notification_kind_is_rejected() -> None:
     with pytest.raises(ValueError, match="unsupported"):
         render_notification(_notification("unknown", {}))
