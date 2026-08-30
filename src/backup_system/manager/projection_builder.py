@@ -272,23 +272,29 @@ class ProjectionBuilder:
     def _disks(self, now: datetime) -> tuple[tuple[PublicDisk, ...], tuple[PublicHealthIssue, ...]]:
         disks: list[PublicDisk] = []
         issues: list[PublicHealthIssue] = []
+        seen_identities: set[str] = set()
         rows = self._connection.execute(
             """SELECT disk_id, public_disk_id, model, media_type, bus_type,
-                capacity_bytes, role FROM physical_disks ORDER BY public_disk_id"""
+                capacity_bytes, role, manufacturer, mount_points_json
+            FROM physical_disks ORDER BY last_seen_at DESC, public_disk_id"""
         ).fetchall()
         for row in rows:
-            observations = self._successful_observations(str(row[0]))
             latest_row = self._connection.execute(
                 """SELECT observed_at, operational_state, smart_health, normalized_json
                 FROM disk_observations
                 WHERE disk_id = ? ORDER BY observation_id DESC LIMIT 1""",
                 (str(row[0]),),
             ).fetchone()
-            metrics = self._smart_metrics(observations, now)
             latest_identity = (
                 str(json.loads(str(latest_row[3])).get("identity_key"))
                 if latest_row else None
             )
+            if latest_identity is not None and latest_identity in seen_identities:
+                continue
+            if latest_identity is not None:
+                seen_identities.add(latest_identity)
+            observations = self._successful_observations(latest_identity, str(row[0]))
+            metrics = self._smart_metrics(observations, now)
             test_row = self._connection.execute(
                 """SELECT result, test_type, reason, finished_at, duration_seconds,
                     remaining_percent FROM smart_test_results
@@ -298,26 +304,37 @@ class ProjectionBuilder:
             ).fetchone()
             operational = _operational(str(latest_row[1])) if latest_row else "unknown"
             smart_health = _smart_health(str(latest_row[2])) if latest_row else "unknown"
-            public_id = str(row[1])
-            if smart_health in {"warning", "critical"}:
+            effective_health = _effective_disk_health(
+                smart_health, str(test_row[0]) if test_row else None
+            )
+            public_id = (
+                f"disk-{latest_identity[:12]}" if latest_identity else str(row[1])
+            )
+            if effective_health in {"warning", "critical"}:
                 issues.append(
                     PublicHealthIssue(
-                        severity=cast(Literal["warning", "critical"], smart_health),
+                        severity=cast(Literal["warning", "critical"], effective_health),
                         kind="smart",
                         subject=public_id,
-                        summary=f"SMART health is {smart_health}",
+                        summary=(
+                            f"SMART self-test is {test_row[0]}"
+                            if test_row and test_row[0] != "success"
+                            else f"SMART health is {effective_health}"
+                        ),
                     )
                 )
             disks.append(
                 PublicDisk(
                     disk_id=public_id,
+                    manufacturer=str(row[7]) if row[7] is not None else None,
                     model=str(row[2]) if row[2] is not None else None,
                     media_type=_media_type(str(row[3]) if row[3] is not None else None),
                     bus_type=str(row[4]) if row[4] is not None else None,
                     capacity_bytes=row[5],
                     role=str(row[6]),
                     operational_state=operational,
-                    smart_health=smart_health,
+                    smart_health=effective_health,
+                    passive_smart_health=smart_health,
                     observed_at=datetime.fromisoformat(str(latest_row[0])) if latest_row else None,
                     metrics=metrics,
                     last_self_test=(
@@ -331,26 +348,26 @@ class ProjectionBuilder:
                         )
                         if test_row else None
                     ),
+                    mount_points=tuple(json.loads(str(row[8]))),
                 )
             )
         return tuple(disks), tuple(issues)
 
-    def _successful_observations(self, disk_id: str) -> list[tuple[datetime, dict[str, Any]]]:
+    def _successful_observations(
+        self, identity_key: str | None, disk_id: str
+    ) -> list[tuple[datetime, dict[str, Any]]]:
         values: list[tuple[datetime, dict[str, Any]]] = []
-        identity: str | None = None
         rows = self._connection.execute(
             """SELECT observed_at, normalized_json FROM disk_observations
-            WHERE disk_id = ? ORDER BY observation_id DESC""",
-            (disk_id,),
+            WHERE ? IS NOT NULL OR disk_id = ? ORDER BY observation_id DESC""",
+            (identity_key, disk_id),
         ).fetchall()
         for observed_at, normalized_json in rows:
             normalized = json.loads(str(normalized_json))
             if normalized.get("collection_success") is not True:
                 continue
             current_identity = str(normalized.get("identity_key"))
-            if identity is None:
-                identity = current_identity
-            if current_identity != identity:
+            if identity_key is not None and current_identity != identity_key:
                 continue
             metrics = normalized.get("metrics")
             if isinstance(metrics, dict):
@@ -471,6 +488,20 @@ def _smart_health(value: str) -> Literal["healthy", "warning", "critical", "unkn
         Literal["healthy", "warning", "critical", "unknown"],
         value if value in _SEVERITY else "unknown",
     )
+
+
+def _effective_disk_health(
+    passive: Literal["healthy", "warning", "critical", "unknown"],
+    self_test: str | None,
+) -> Literal["healthy", "warning", "critical", "unknown"]:
+    test_health: Literal["healthy", "warning", "critical"] = (
+        "critical"
+        if self_test == "failed"
+        else "warning"
+        if self_test in {"timeout", "unsupported"}
+        else "healthy"
+    )
+    return max((passive, test_health), key=lambda value: _SEVERITY[value])
 
 
 def _overall_health(

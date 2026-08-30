@@ -73,8 +73,13 @@ class SmartHistoryRepository:
         media_type: str | None = None,
         bus_type: str | None = None,
         capacity_bytes: int | None = None,
+        manufacturer: str | None = None,
+        mount_points: tuple[str, ...] = (),
     ) -> SmartComparison:
         timestamp = require_aware(observed_at).isoformat()
+        with self._connection:
+            disk_id = self._merge_identity_rows(disk_id, identity_key)
+        public_disk_id = f"disk-{identity_key[:12]}"
         previous = self._previous_successful(disk_id)
         comparable = previous is not None and previous[0] == identity_key
         previous_metrics = previous[1] if previous is not None and comparable else None
@@ -89,8 +94,8 @@ class SmartHistoryRepository:
             self._connection.execute(
                 """INSERT INTO physical_disks(
                     disk_id, public_disk_id, model, media_type, bus_type,
-                    capacity_bytes, role, last_seen_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    capacity_bytes, role, last_seen_at, manufacturer, mount_points_json
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON CONFLICT(disk_id) DO UPDATE SET
                     public_disk_id = excluded.public_disk_id,
                     model = excluded.model,
@@ -98,7 +103,9 @@ class SmartHistoryRepository:
                     bus_type = excluded.bus_type,
                     capacity_bytes = excluded.capacity_bytes,
                     role = excluded.role,
-                    last_seen_at = excluded.last_seen_at""",
+                    last_seen_at = excluded.last_seen_at,
+                    manufacturer = excluded.manufacturer,
+                    mount_points_json = excluded.mount_points_json""",
                 (
                     disk_id,
                     public_disk_id,
@@ -108,7 +115,14 @@ class SmartHistoryRepository:
                     capacity_bytes,
                     role,
                     timestamp,
+                    manufacturer,
+                    json.dumps(mount_points, ensure_ascii=False, separators=(",", ":")),
                 ),
+            )
+            self._connection.execute(
+                """UPDATE smart_test_results SET disk_id = ?
+                WHERE disk_id != ? AND identity_key = ?""",
+                (disk_id, disk_id, identity_key),
             )
             cursor = self._connection.execute(
                 """INSERT INTO disk_observations(
@@ -156,6 +170,21 @@ class SmartHistoryRepository:
             regressions=regressions if collection_success else (),
             reset_counters=resets if collection_success else (),
         )
+
+    def _merge_identity_rows(self, requested_disk_id: str, identity_key: str) -> str:
+        matches: list[str] = []
+        for candidate, normalized_json in self._connection.execute(
+            """SELECT physical_disks.disk_id, disk_observations.normalized_json
+            FROM physical_disks JOIN disk_observations ON disk_observations.observation_id = (
+                SELECT observation_id FROM disk_observations latest
+                WHERE latest.disk_id = physical_disks.disk_id
+                ORDER BY observation_id DESC LIMIT 1)
+            ORDER BY physical_disks.rowid"""
+        ):
+            if json.loads(str(normalized_json)).get("identity_key") == identity_key:
+                matches.append(str(candidate))
+        canonical = matches[0] if matches else requested_disk_id
+        return canonical
 
     def _previous_successful(self, disk_id: str) -> tuple[str, SmartMetrics] | None:
         rows = self._connection.execute(

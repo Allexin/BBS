@@ -7,7 +7,7 @@ from pathlib import Path
 
 from backup_system.common.time import utc_now
 
-LATEST_SCHEMA_VERSION = 8
+LATEST_SCHEMA_VERSION = 9
 
 _SCHEMA_V1 = """
 CREATE TABLE jobs (
@@ -250,6 +250,11 @@ CREATE INDEX ix_smart_test_results_disk_finished
 ON smart_test_results(disk_id, finished_at DESC);
 """
 
+_SCHEMA_V9 = """
+ALTER TABLE physical_disks ADD COLUMN manufacturer TEXT;
+ALTER TABLE physical_disks ADD COLUMN mount_points_json TEXT NOT NULL DEFAULT '[]';
+"""
+
 
 class SchemaVersionError(RuntimeError):
     """The database schema is newer than this application understands."""
@@ -335,6 +340,12 @@ def _migrate(connection: sqlite3.Connection) -> None:
             connection.execute(
                 "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
                 (8, utc_now().isoformat()),
+            )
+        if 9 not in versions:
+            _execute_script_atomically(connection, _SCHEMA_V9)
+            connection.execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?, ?)",
+                (9, utc_now().isoformat()),
             )
 
 

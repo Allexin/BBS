@@ -30,6 +30,12 @@ class SmartPreflightObservation:
     metrics: SmartMetrics
     reason: str | None = None
     identity_key: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    media_type: Literal["hdd", "ssd", "nvme", "unknown"] = "unknown"
+    bus_type: str | None = None
+    capacity_bytes: int | None = None
+    mount_points: tuple[str, ...] = ()
 
 
 class SubprocessSmartctlBackend:
@@ -111,6 +117,12 @@ class SmartPreflight:
             health,
             metrics,
             identity_key=_identity_key(configured),
+            manufacturer=configured.manufacturer,
+            model=configured.model,
+            media_type=configured.media_type,
+            bus_type=configured.bus_type,
+            capacity_bytes=configured.identity.expected_size_bytes,
+            mount_points=configured.mount_points,
         )
 
 
@@ -156,7 +168,14 @@ def _ata_attributes(payload: dict[str, Any]) -> dict[int, int]:
 
 
 def _unknown(configured: SmartDiskConfig, reason: str) -> SmartPreflightObservation:
-    return SmartPreflightObservation(configured.id, False, "unknown", SmartMetrics(), reason)
+    return SmartPreflightObservation(
+        configured.id, False, "unknown", SmartMetrics(), reason,
+        manufacturer=configured.manufacturer, model=configured.model,
+        media_type=configured.media_type, bus_type=configured.bus_type,
+        capacity_bytes=configured.identity.expected_size_bytes,
+        mount_points=configured.mount_points,
+        identity_key=_identity_key(configured),
+    )
 
 
 def _nested_int(payload: dict[str, Any], outer: str, inner: str) -> int | None:

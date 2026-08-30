@@ -12,7 +12,11 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from backup_system.common.config import SmartDiskConfig
-from backup_system.executor.storage_inventory import ComStorageInventorySource, DiskRecord
+from backup_system.executor.storage_inventory import (
+    ComStorageInventorySource,
+    DiskRecord,
+    PartitionRecord,
+)
 
 
 class SmartSelfTestError(RuntimeError):
@@ -64,14 +68,23 @@ class SubprocessSmartSelfTestBackend:
         *,
         command_timeout_seconds: int = 30,
         inventory: Callable[[], Sequence[DiskRecord]] | None = None,
+        partition_inventory: Callable[[], Sequence[PartitionRecord]] | None = None,
     ) -> None:
         self._executable = executable
         self._timeout = command_timeout_seconds
-        self._inventory = inventory or (lambda: ComStorageInventorySource().disks())
+        if inventory is None:
+            source = ComStorageInventorySource()
+            self._inventory = source.disks
+            self._partition_inventory = source.partitions
+        else:
+            self._inventory = inventory
+            self._partition_inventory = partition_inventory or (lambda: ())
         self._capacity_fallbacks: dict[str, int] = {}
+        self._details: dict[str, dict[str, str]] = {}
 
     def identify(self, device: str) -> tuple[str, int | None]:
         info = self._run(("--all", "--json=o", device))
+        self._details[device] = _public_details(info)
         return str(info.get("serial_number", "")), (
             _capacity(info) or self._capacity_fallbacks.get(device)
         )
@@ -79,6 +92,11 @@ class SubprocessSmartSelfTestBackend:
     def discover(self) -> tuple[SmartDiskConfig, ...]:
         discovered: list[SmartDiskConfig] = []
         records = sorted(self._inventory(), key=lambda item: item.number)
+        mounts: dict[int, set[str]] = {}
+        for partition in self._partition_inventory():
+            mounts.setdefault(partition.disk_number, set()).update(
+                _public_mounts(partition.access_paths)
+            )
         for index, record in enumerate(records):
             device = f"/dev/pd{record.number}"
             serial, capacity = self.identify(device)
@@ -90,6 +108,7 @@ class SubprocessSmartSelfTestBackend:
                 raise SmartSelfTestError("Windows and smartctl disk capacities do not match")
             self._capacity_fallbacks[device] = record.size_bytes
             capacity = record.size_bytes
+            details = self._details.get(device, {})
             discovered.append(
                 SmartDiskConfig.model_validate(
                     {
@@ -100,6 +119,11 @@ class SubprocessSmartSelfTestBackend:
                             "serial": serial,
                             "expected_size_bytes": capacity,
                         },
+                        "manufacturer": details.get("manufacturer"),
+                        "model": details.get("model"),
+                        "media_type": details.get("media_type", "unknown"),
+                        "bus_type": details.get("bus_type"),
+                        "mount_points": sorted(mounts.get(record.number, set())),
                     }
                 )
             )
@@ -291,3 +315,27 @@ def _nonnegative_int(value: object) -> int | None:
 
 def _normalize(value: str) -> str:
     return value.replace("\x00", "").strip().casefold()
+
+
+def _public_details(payload: dict[str, Any]) -> dict[str, str]:
+    protocol = str(payload.get("device", {}).get("protocol", "")) if isinstance(
+        payload.get("device"), dict
+    ) else ""
+    model = str(payload.get("model_name", "")).strip()
+    family = str(payload.get("model_family", "")).strip()
+    rotation = payload.get("rotation_rate")
+    media = "nvme" if "nvme" in protocol.casefold() else "ssd" if rotation == 0 else "hdd"
+    return {
+        "manufacturer": family or "Unknown",
+        "model": model or "Unknown",
+        "media_type": media,
+        "bus_type": protocol or "Unknown",
+    }
+
+
+def _public_mounts(paths: Sequence[str]) -> tuple[str, ...]:
+    return tuple(
+        path if len(path) == 3 and path[1:] == ":\\" else path.rstrip("\\")
+        for path in paths
+        if not path.casefold().startswith(r"\\?\volume{")
+    )

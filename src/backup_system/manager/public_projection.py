@@ -96,6 +96,7 @@ class PublicSmartSelfTest(PublicModel):
 
 class PublicDisk(PublicModel):
     disk_id: str
+    manufacturer: str | None = None
     model: str | None = None
     media_type: Literal["hdd", "ssd", "nvme", "unknown"]
     bus_type: str | None = None
@@ -106,6 +107,8 @@ class PublicDisk(PublicModel):
     observed_at: AwareDatetime | None = None
     metrics: dict[str, PublicSmartMetric]
     last_self_test: PublicSmartSelfTest | None = None
+    mount_points: tuple[str, ...] = ()
+    passive_smart_health: Literal["healthy", "warning", "critical", "unknown"]
 
 
 class PublicVolume(PublicModel):

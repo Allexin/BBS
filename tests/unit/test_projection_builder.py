@@ -152,3 +152,80 @@ def test_builder_uses_unknown_instead_of_inventing_missing_data(tmp_path: Path) 
         assert status.jobs[0].last_run is None
     finally:
         connection.close()
+
+
+def test_failed_self_test_overrides_healthy_passive_state(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    now = datetime(2026, 8, 30, tzinfo=UTC)
+    try:
+        operations = OperationsRepository(connection)
+        operations.upsert_job(
+            job_id="smart", display_name="SMART", enabled=True, config_valid=True
+        )
+        operation = operations.enqueue(
+            deduplication_key="smart:run", job_id="smart", kind="smart-test",
+            trigger_source="manual", queued_at=now,
+        )
+        run = operations.claim_next(started_at=now)
+        assert operation is not None and run is not None
+        SmartHistoryRepository(connection).record(
+            disk_id="system-disk-2", public_disk_id="ignored", identity_key="b" * 64,
+            role="monitored", observed_at=now, operational_state="unknown",
+            smart_health="healthy", metrics=SmartMetrics(overall_passed=True),
+            manufacturer="Vendor", model="Model", mount_points=("D:\\",),
+        )
+        with connection:
+            connection.execute(
+                """INSERT INTO smart_test_results(
+                    run_id, disk_id, identity_key, test_type, result, reason,
+                    duration_seconds, remaining_percent, finished_at
+                ) VALUES (?, 'system-disk-2', ?, 'short', 'timeout', 'timed out', 900, 90, ?)""",
+                (str(run.run_id), "b" * 64, now.isoformat()),
+            )
+        status, _ = ProjectionBuilder(connection).build(
+            now=now, manager_started_at=now, manager_state="idle", version="test"
+        )
+        assert status.disks[0].smart_health == "warning"
+        assert status.disks[0].passive_smart_health == "healthy"
+        assert status.disks[0].mount_points == ("D:\\",)
+        assert status.health_issues[0].summary == "SMART self-test is timeout"
+    finally:
+        connection.close()
+
+
+def test_projection_collapses_legacy_and_discovery_ids_by_identity(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    now = datetime(2026, 8, 30, tzinfo=UTC)
+    try:
+        history = SmartHistoryRepository(connection)
+        history.record(
+            disk_id="test-disk", public_disk_id="test-disk", identity_key="c" * 64,
+            role="monitored", observed_at=now - timedelta(hours=1),
+            operational_state="unknown", smart_health="healthy", metrics=SmartMetrics(),
+        )
+        normalized = connection.execute(
+            "SELECT normalized_json FROM disk_observations WHERE disk_id = 'test-disk'"
+        ).fetchone()[0]
+        with connection:
+            connection.execute(
+                """INSERT INTO physical_disks(
+                    disk_id, public_disk_id, model, media_type, bus_type, capacity_bytes,
+                    role, last_seen_at, manufacturer, mount_points_json
+                ) VALUES ('system-disk-2', 'system-disk-2', 'Current model', 'ssd',
+                    'SATA', 1000, 'monitored', ?, 'Vendor', '["D:\\\\"]')""",
+                (now.isoformat(),),
+            )
+            connection.execute(
+                """INSERT INTO disk_observations(
+                    disk_id, observed_at, operational_state, smart_health, normalized_json
+                ) VALUES ('system-disk-2', ?, 'unknown', 'healthy', ?)""",
+                (now.isoformat(), normalized),
+            )
+        status, _ = ProjectionBuilder(connection).build(
+            now=now, manager_started_at=now, manager_state="idle", version="test"
+        )
+        assert len(status.disks) == 1
+        assert status.disks[0].disk_id == f"disk-{'c' * 12}"
+        assert status.disks[0].model == "Current model"
+    finally:
+        connection.close()

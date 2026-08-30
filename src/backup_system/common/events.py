@@ -79,6 +79,12 @@ class SmartObserved(EventBase):
     identity_key: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     metrics: SmartMetrics
     reason: str | None = None
+    manufacturer: str | None = None
+    model: str | None = None
+    media_type: Literal["hdd", "ssd", "nvme", "unknown"] = "unknown"
+    bus_type: str | None = None
+    capacity_bytes: int | None = Field(default=None, ge=0)
+    mount_points: tuple[str, ...] = ()
 
 
 class SmartTestDiskFinished(EventBase):

@@ -60,6 +60,12 @@ class ExecutorEventIngestor:
             smart_health=event.health,
             metrics=event.metrics,
             collection_success=event.collection_success,
+            manufacturer=event.manufacturer,
+            model=event.model,
+            media_type=event.media_type,
+            bus_type=event.bus_type,
+            capacity_bytes=event.capacity_bytes,
+            mount_points=event.mount_points,
         )
 
 

@@ -3274,7 +3274,11 @@ SMART-наблюдений. После попытки self-test executor в лю
 window. Отмена manager run не выдаёт устройству команду принудительного прерывания
 уже начатого self-test: следующий SMART preflight читает фактический результат из
 self-test history. Публичные результаты all-system используют необратимый identity
-key и не раскрывают serial, WWN либо raw device selector.
+key и не раскрывают serial, WWN либо raw device selector. Наблюдения, пришедшие под
+разными configured/discovery ID, объединяются в одну историю по identity key. UI
+показывает безопасные идентифицирующие признаки: производителя, модель, capacity,
+тип шины и текущие пользовательские drive-letter/directory mount points; служебные
+volume GUID paths отбрасываются.
 
 SMART-stage запускается после того, как executor идентифицировал source/destination и
 перевёл требуемый backup-диск online, но до VSS и основной data operation. Она сама
@@ -3288,6 +3292,12 @@ SMART overall `PASSED` не отменяет анализ отдельных cou
 - `warning`: появились reallocated sectors, растут interface CRC errors, просрочен self-test или температура превысила configured warning threshold;
 - `unknown`: SMART недоступен, устройство/bridge не поддерживается или данные устарели;
 - `healthy`: сбор свежий, overall pass и нет warning/critical rules.
+
+Последний результат self-test участвует в итоговом health диска отдельно от
+пассивных attributes: `timeout|unsupported` дают как минимум `warning`, а явно
+завершившийся неуспешно self-test — `critical`. UI одновременно показывает passive
+SMART health и self-test outcome, поэтому нормальные counters не маскируют
+незавершившийся тест; результат и причина сохраняются даже при пустом наборе metrics.
 
 SMART monitoring является stateful: manager сохраняет успешные нормализованные
 наблюдения в `disk_observations` и сравнивает новое наблюдение не только с

@@ -22,6 +22,12 @@ def build_smart_events(
             identity_key=observation.identity_key,
             metrics=observation.metrics,
             reason=observation.reason,
+            manufacturer=observation.manufacturer,
+            model=observation.model,
+            media_type=observation.media_type,
+            bus_type=observation.bus_type,
+            capacity_bytes=observation.capacity_bytes,
+            mount_points=observation.mount_points,
         )
         for observation in observations
     )

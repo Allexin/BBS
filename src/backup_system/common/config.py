@@ -313,6 +313,11 @@ class SmartDiskConfig(StrictModel):
     id: str
     display_name: str = Field(min_length=1)
     identity: SmartDiskIdentityConfig
+    manufacturer: str | None = None
+    model: str | None = None
+    media_type: Literal["hdd", "ssd", "nvme", "unknown"] = "unknown"
+    bus_type: str | None = None
+    mount_points: tuple[str, ...] = ()
 
     _disk_id = field_validator("id")(_validate_job_id)
 

@@ -63,6 +63,27 @@ def test_unknown_observation_does_not_replace_successful_baseline(tmp_path: Path
         connection.close()
 
 
+def test_same_identity_under_new_discovery_id_is_merged(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    try:
+        ingestor = ExecutorEventIngestor(SmartHistoryRepository(connection))
+        now = datetime.now(UTC)
+        first = _event(pending=0, observed_at=now)
+        ingestor.ingest(first)
+        ingestor.ingest(
+            first.model_copy(
+                update={"disk_id": "system-disk-4", "timestamp": now + timedelta(seconds=1)}
+            )
+        )
+        assert connection.execute("SELECT COUNT(*) FROM physical_disks").fetchone() == (1,)
+        assert connection.execute("SELECT COUNT(*) FROM disk_observations").fetchone() == (2,)
+        assert connection.execute("SELECT public_disk_id FROM physical_disks").fetchone() == (
+            f"disk-{'a' * 12}",
+        )
+    finally:
+        connection.close()
+
+
 def test_success_without_identity_is_rejected() -> None:
     event = SmartObserved(
         event="smart_observed",
