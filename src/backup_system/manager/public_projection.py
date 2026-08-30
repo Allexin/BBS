@@ -109,6 +109,8 @@ class PublicDisk(PublicModel):
     last_self_test: PublicSmartSelfTest | None = None
     mount_points: tuple[str, ...] = ()
     passive_smart_health: Literal["healthy", "warning", "critical", "unknown"]
+    affects_system_health: bool = True
+    health_policy_reason: str | None = None
 
 
 class PublicVolume(PublicModel):

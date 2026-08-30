@@ -53,12 +53,14 @@ class ProjectionBuilder:
         | None = None,
         job_deadlines: dict[str, str | None] | None = None,
         next_operations: dict[str, str] | None = None,
+        disk_health_policies: dict[str, tuple[bool, str]] | None = None,
         volume_stale_after_seconds: int = 120,
     ) -> None:
         self._connection = connection
         self._job_kinds = job_kinds or {}
         self._job_deadlines = job_deadlines or {}
         self._next_operations = next_operations or {}
+        self._disk_health_policies = disk_health_policies or {}
         if volume_stale_after_seconds <= 0:
             raise ValueError("volume stale threshold must be positive")
         self._volume_stale_after = timedelta(seconds=volume_stale_after_seconds)
@@ -167,12 +169,23 @@ class ProjectionBuilder:
             public_runs = tuple(self._public_run(row, now) for row in run_rows)
             last_run = public_runs[0] if public_runs else None
             health_run = next((item for item in public_runs if item.state == "finished"), None)
+            health_row = next(
+                (row for row in run_rows if str(row[0]) == "completed" and row[1] is not None),
+                None,
+            )
             health: Literal["healthy", "warning", "critical", "unknown"] = "unknown"
             reason = "No runs recorded"
             if not bool(config_valid):
                 health, reason = "critical", "Configuration is invalid"
             elif health_run is not None and health_run.result == "failed":
-                health, reason = "warning", "Latest run failed"
+                run_id = str(health_row[6]) if health_row is not None else ""
+                if (
+                    self._job_kinds.get(job_id) == "smart-test"
+                    and self._smart_failure_is_excluded(run_id)
+                ):
+                    health, reason = "healthy", "Latest run failed only on excluded disks"
+                else:
+                    health, reason = "warning", "Latest run failed"
             elif health_run is not None and health_run.deadline_exceeded:
                 health, reason = "warning", "Latest run exceeded deadline"
             elif health_run is not None and health_run.result in {"success", "warning"}:
@@ -222,6 +235,18 @@ class ProjectionBuilder:
                 )
             )
         return tuple(jobs), tuple(issues)
+
+    def _smart_failure_is_excluded(self, run_id: str) -> bool:
+        failed = self._connection.execute(
+            """SELECT DISTINCT identity_key FROM smart_test_results
+            WHERE run_id = ? AND result != 'success'""",
+            (run_id,),
+        ).fetchall()
+        return bool(failed) and all(
+            self._disk_health_policies.get(f"disk-{str(row[0])[:12]}", (True, ""))[0]
+            is False
+            for row in failed
+        )
 
     @staticmethod
     def _public_run(row: tuple[Any, ...], now: datetime) -> PublicRun:
@@ -310,7 +335,10 @@ class ProjectionBuilder:
             public_id = (
                 f"disk-{latest_identity[:12]}" if latest_identity else str(row[1])
             )
-            if effective_health in {"warning", "critical"}:
+            affects_health, policy_reason = self._disk_health_policies.get(
+                public_id, (True, "")
+            )
+            if affects_health and effective_health in {"warning", "critical"}:
                 issues.append(
                     PublicHealthIssue(
                         severity=cast(Literal["warning", "critical"], effective_health),
@@ -349,6 +377,8 @@ class ProjectionBuilder:
                         if test_row else None
                     ),
                     mount_points=tuple(json.loads(str(row[8]))),
+                    affects_system_health=affects_health,
+                    health_policy_reason=policy_reason or None,
                 )
             )
         return tuple(disks), tuple(issues)
@@ -509,7 +539,9 @@ def _overall_health(
     disks: tuple[PublicDisk, ...],
     issues: tuple[PublicHealthIssue, ...],
 ) -> Literal["healthy", "warning", "critical", "unknown"]:
-    values = [job.health for job in jobs] + [disk.smart_health for disk in disks]
+    values = [job.health for job in jobs] + [
+        disk.smart_health for disk in disks if disk.affects_system_health
+    ]
     values += [issue.severity for issue in issues]
     if not values:
         return "unknown"

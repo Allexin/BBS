@@ -31,11 +31,12 @@ function renderDisks(items){
     const head=document.createElement("header"),title=text("div",null,"disk-title");
     const identity=[disk.manufacturer,disk.media_type,disk.bus_type,formatBytes(disk.capacity_bytes)].filter(Boolean).join(" · ");
     title.append(text("h3",disk.model??disk.disk_id),text("p",identity||disk.disk_id,"muted"),text("p",`Mount points: ${disk.mount_points.length?disk.mount_points.join(", "):"none"}`,"muted"));
-    head.append(title,text("span",disk.smart_health,"badge "+disk.smart_health));
+    head.append(title,text("span",disk.affects_system_health?disk.smart_health:`${disk.smart_health} · excluded`,"badge "+disk.smart_health));
     const test=disk.last_self_test;
     const summary=text("div",null,"disk-summary");
     summary.append(summaryCell("Passive SMART",disk.passive_smart_health,disk.passive_smart_health),summaryCell("Last self-test",test?`${test.test_type} / ${test.result}`:"not recorded",test?.result==="success"?"healthy":test?"warning":"unknown"),summaryCell("Observed",formatTime(disk.observed_at)));
     card.append(head,summary);
+    if(!disk.affects_system_health)card.append(text("p",`Excluded from system health · ${disk.health_policy_reason??"accepted risk"}`,"policy-note"));
     if(test){const detail=`${test.reason} · ${formatDuration(test.duration_seconds)} · ${formatTime(test.finished_at)}${test.remaining_percent==null?"":` · ${test.remaining_percent}% remaining`}`;card.append(text("p",detail,test.result==="success"?"muted":"test-message"));}
     const rows=Object.entries(disk.metrics).filter(([,metric])=>[metric.current,metric.previous,metric.delta,metric.change_24h,metric.change_30d].some(value=>value!=null));
     if(rows.length){const wrap=text("div",null,"metric-wrap"),table=text("table",null,"metric-table"),thead=document.createElement("thead"),header=document.createElement("tr"),tbody=document.createElement("tbody");["Indicator","Current","Delta","24h","30d","State"].forEach(value=>header.append(text("th",value)));thead.append(header);rows.forEach(([name,metric])=>{const row=document.createElement("tr"),[state,stateClass]=metricState(name,metric.current);row.append(text("td",metricNames[name]??name),text("td",dash(metric.current)),text("td",dash(metric.delta)),text("td",dash(metric.change_24h)),text("td",dash(metric.change_30d)),text("td",state,"metric-state "+stateClass));tbody.append(row);});table.append(thead,tbody);wrap.append(table);card.append(wrap);}

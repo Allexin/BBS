@@ -3404,6 +3404,15 @@ SMART UI выводит физические диски одной вертик�
 значения обозначаются коротким тире. Ошибка self-test и её причина всегда находятся
 выше таблицы и не маскируются здоровыми passive counters.
 
+Manager monitoring config может задать для стабильного публичного `disk-<hash>`
+политику `affects_system_health: false` с обязательной человеческой причиной. Это
+явное принятие риска, а не изменение фактического SMART health: карточка продолжает
+показывать warning/critical и получает отметку `Excluded from system health`, история
+и новые regression alerts продолжают работать. Такой диск не создаёт global health
+issue и не участвует в overall health. Если all-system SMART run завершился failed
+исключительно из-за self-test результатов исключённых дисков, job health также не
+понижает overall health; сам run и per-disk failures остаются видимыми.
+
 ## 40. Планирование запусков
 
 ### 40.1. Cron-правила и циклы jobs

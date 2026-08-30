@@ -222,6 +222,30 @@ def test_smart_config_rejects_duplicate_serials() -> None:
         )
 
 
+def test_manager_accepts_explicit_nonimpacting_disk_health_policy() -> None:
+    value = {
+        "schema_version": 1,
+        "timezone": "Europe/Samara",
+        "scheduler": {"poll_seconds": 5},
+        "monitoring": {
+            "volumes": {"poll_seconds": 60, "items": []},
+            "smart": {"health_policies": [{
+                "disk_id": "disk-0123456789ab",
+                "affects_system_health": False,
+                "reason": "Accepted risk for temporary media",
+            }]},
+        },
+        "jobs": [],
+        "telegram": {
+            "enabled": False, "credentials_file": "telegram.json",
+            "daily_report_cron": "0 9 * * *", "daily_report_timezone": "Europe/Samara",
+            "stale_manager_minutes": 10,
+        },
+    }
+    config = ManagerConfig.model_validate(value)
+    assert config.monitoring.smart.health_policies[0].affects_system_health is False
+
+
 def test_smart_test_job_is_selected_by_discriminator() -> None:
     config = EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(
         {

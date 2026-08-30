@@ -95,8 +95,26 @@ class VolumeMonitoringConfig(StrictModel):
     items: tuple[MonitoredVolumeConfig, ...]
 
 
+class SmartHealthPolicyConfig(StrictModel):
+    disk_id: str = Field(pattern=r"^disk-[0-9a-f]{12}$")
+    affects_system_health: bool = True
+    reason: str = Field(min_length=1)
+
+
+class SmartMonitoringConfig(StrictModel):
+    health_policies: tuple[SmartHealthPolicyConfig, ...] = ()
+
+    @model_validator(mode="after")
+    def unique_disks(self) -> SmartMonitoringConfig:
+        disk_ids = [item.disk_id.casefold() for item in self.health_policies]
+        if len(disk_ids) != len(set(disk_ids)):
+            raise ValueError("SMART health policy disk IDs must be unique")
+        return self
+
+
 class MonitoringConfig(StrictModel):
     volumes: VolumeMonitoringConfig
+    smart: SmartMonitoringConfig = SmartMonitoringConfig()
 
 
 class SchedulerConfig(StrictModel):

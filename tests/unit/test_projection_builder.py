@@ -182,13 +182,27 @@ def test_failed_self_test_overrides_healthy_passive_state(tmp_path: Path) -> Non
                 ) VALUES (?, 'system-disk-2', ?, 'short', 'timeout', 'timed out', 900, 90, ?)""",
                 (str(run.run_id), "b" * 64, now.isoformat()),
             )
-        status, _ = ProjectionBuilder(connection).build(
+        operations.finish_run(
+            run.run_id, result=RunResult.FAILED, exit_code=30,
+            disk_offline_confirmed=True, finished_at=now,
+        )
+        status, _ = ProjectionBuilder(
+            connection,
+            job_kinds={"smart": "smart-test"},
+            disk_health_policies={
+                f"disk-{'b' * 12}": (False, "Accepted risk for temporary media")
+            },
+        ).build(
             now=now, manager_started_at=now, manager_state="idle", version="test"
         )
         assert status.disks[0].smart_health == "warning"
         assert status.disks[0].passive_smart_health == "healthy"
+        assert status.disks[0].affects_system_health is False
+        assert status.disks[0].health_policy_reason == "Accepted risk for temporary media"
         assert status.disks[0].mount_points == ("D:\\",)
-        assert status.health_issues[0].summary == "SMART self-test is timeout"
+        assert status.jobs[0].health == "healthy"
+        assert status.overall_health == "healthy"
+        assert status.health_issues == ()
     finally:
         connection.close()
 

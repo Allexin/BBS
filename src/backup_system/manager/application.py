@@ -109,6 +109,10 @@ class ManagerApplication:
             connection,
             job_kinds=selected_job_kinds,
             job_deadlines={job.id: job.schedule.deadline for job in config.jobs},
+            disk_health_policies={
+                item.disk_id: (item.affects_system_health, item.reason)
+                for item in config.monitoring.smart.health_policies
+            },
         )
         self._projection_publisher = ProjectionPublisher(layout.public)
 
