@@ -22,6 +22,7 @@ dependencies = [
 backup-manager = "backup_system.manager.cli:main"
 backup-executor = "backup_system.executor.cli:main"
 backupctl = "backup_system.ctl.cli:main"
+bbs-deploy = "backup_system.deployment.deploy:main"
 
 [dependency-groups]
 dev = [
