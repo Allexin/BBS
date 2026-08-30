@@ -33,3 +33,10 @@ def test_nginx_example_has_only_scoped_static_aliases() -> None:
     assert "Stable/web" in config
     assert "Stable/data/config" not in config
     assert "Stable/data/state" not in config
+
+
+def test_status_ui_labels_missing_disk_identity_fields() -> None:
+    script = (WEB / "status.js").read_text(encoding="utf-8")
+    assert 'value ?? "not reported"' not in script
+    assert "Manufacturer: ${dash(disk.manufacturer)}" in script
+    assert "Capacity: ${formatBytes(disk.capacity_bytes)}" in script

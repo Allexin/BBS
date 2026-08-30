@@ -1,9 +1,9 @@
 "use strict";
 const byId = id => document.getElementById(id);
-const text = (tag, value, className) => { const node=document.createElement(tag); node.textContent=value ?? "not reported"; if(className) node.className=className; return node; };
-const formatTime = value => value ? new Date(value).toLocaleString() : "not reported";
-const formatDuration = seconds => seconds == null ? "not reported" : `${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m`;
-const formatBytes = value => { if(value==null) return "not reported"; const units=["B","KiB","MiB","GiB","TiB"]; let size=value,index=0; while(size>=1024&&index<units.length-1){size/=1024;index++;} return `${size.toFixed(index?1:0)} ${units[index]}`; };
+const text = (tag, value, className) => { const node=document.createElement(tag); if(value!=null)node.textContent=value; if(className) node.className=className; return node; };
+const formatTime = value => value ? new Date(value).toLocaleString() : "—";
+const formatDuration = seconds => seconds == null ? "—" : `${Math.floor(seconds/3600)}h ${Math.floor(seconds%3600/60)}m`;
+const formatBytes = value => { if(value==null) return "—"; const units=["B","KiB","MiB","GiB","TiB"]; let size=value,index=0; while(size>=1024&&index<units.length-1){size/=1024;index++;} return `${size.toFixed(index?1:0)} ${units[index]}`; };
 const addFact = (list,label,value) => { list.append(text("dt",label),text("dd",value)); };
 
 function renderHealth(data, health) {
@@ -29,8 +29,8 @@ function renderDisks(items){
   items.forEach(disk=>{
     const card=text("article",null,"card disk-card");
     const head=document.createElement("header"),title=text("div",null,"disk-title");
-    const identity=[disk.manufacturer,disk.media_type,disk.bus_type,formatBytes(disk.capacity_bytes)].filter(Boolean).join(" · ");
-    title.append(text("h3",disk.model??disk.disk_id),text("p",identity||disk.disk_id,"muted"),text("p",`Mount points: ${disk.mount_points.length?disk.mount_points.join(", "):"none"}`,"muted"));
+    const identity=`Manufacturer: ${dash(disk.manufacturer)} · Type: ${dash(disk.media_type)} · Bus: ${dash(disk.bus_type)} · Capacity: ${formatBytes(disk.capacity_bytes)}`;
+    title.append(text("h3",disk.model??disk.disk_id),text("p",identity,"muted"),text("p",`Mount points: ${disk.mount_points.length?disk.mount_points.join(", "):"none"}`,"muted"));
     head.append(title,text("span",disk.affects_system_health?disk.smart_health:`${disk.smart_health} · excluded`,"badge "+disk.smart_health));
     const test=disk.last_self_test;
     const summary=text("div",null,"disk-summary");
