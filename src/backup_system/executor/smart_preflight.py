@@ -94,7 +94,10 @@ class SmartPreflight:
         ):
             return _unknown(configured, "configured SMART disk serial does not match")
         capacity = _nested_int(payload, "user_capacity", "bytes")
-        if capacity != configured.identity.expected_size_bytes:
+        # Some ATA bridges omit user_capacity even though discovery has already
+        # cross-checked the Windows inventory. Reject a contradictory value, but
+        # keep a serial-matched observation when the field is absent.
+        if capacity is not None and capacity != configured.identity.expected_size_bytes:
             return _unknown(configured, "configured SMART disk capacity does not match")
         metrics = _parse_metrics(payload)
         health: Literal["critical", "healthy"]

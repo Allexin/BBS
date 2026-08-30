@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import subprocess
 import time
@@ -15,7 +16,9 @@ from backup_system.executor.storage_inventory import ComStorageInventorySource, 
 
 
 class SmartSelfTestError(RuntimeError):
-    pass
+    def __init__(self, message: str, *, remaining_percent: int | None = None) -> None:
+        super().__init__(message)
+        self.remaining_percent = remaining_percent
 
 
 @dataclass(frozen=True, slots=True)
@@ -24,6 +27,24 @@ class SmartSelfTestStatus:
     passed: bool | None
     description: str
     remaining_percent: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class SmartSelfTestResult:
+    disk: SmartDiskConfig
+    result: Literal["success", "failed", "timeout", "unsupported"]
+    reason: str
+    duration_seconds: int
+    remaining_percent: int | None
+
+    @property
+    def identity_key(self) -> str:
+        material = (
+            _normalize(self.disk.identity.serial)
+            + "\0"
+            + str(self.disk.identity.expected_size_bytes)
+        ).encode("utf-8")
+        return hashlib.sha256(material).hexdigest()
 
 
 class SmartSelfTestBackend(Protocol):
@@ -148,7 +169,10 @@ def run_smart_self_test(
                 raise SmartSelfTestError("SMART self-test did not complete successfully")
             return status
         if monotonic() >= deadline:
-            raise SmartSelfTestError("SMART self-test completion timed out")
+            raise SmartSelfTestError(
+                "SMART self-test completion timed out",
+                remaining_percent=status.remaining_percent,
+            )
         sleep(poll_seconds)
 
 
@@ -161,12 +185,15 @@ def run_smart_self_tests(
     timeout_seconds: int,
     checkpoint: Callable[[], None],
     on_disk: Callable[[int, int], None],
-) -> tuple[str, ...]:
-    failures: list[str] = []
+    on_result: Callable[[SmartSelfTestResult], None] = lambda result: None,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> tuple[SmartSelfTestResult, ...]:
+    results: list[SmartSelfTestResult] = []
     for index, disk in enumerate(disks, start=1):
         on_disk(index, len(disks))
+        started = monotonic()
         try:
-            run_smart_self_test(
+            status = run_smart_self_test(
                 backend=backend,
                 disk=disk,
                 test_type=test_type,
@@ -174,9 +201,32 @@ def run_smart_self_tests(
                 timeout_seconds=timeout_seconds,
                 checkpoint=checkpoint,
             )
-        except SmartSelfTestError:
-            failures.append(disk.id)
-    return tuple(failures)
+            result = SmartSelfTestResult(
+                disk=disk,
+                result="success",
+                reason=status.description,
+                duration_seconds=int(monotonic() - started),
+                remaining_percent=status.remaining_percent,
+            )
+        except SmartSelfTestError as error:
+            reason = str(error)
+            outcome: Literal["failed", "timeout", "unsupported"] = (
+                "timeout"
+                if "timed out" in reason
+                else "unsupported"
+                if "unsupported" in reason
+                else "failed"
+            )
+            result = SmartSelfTestResult(
+                disk=disk,
+                result=outcome,
+                reason=reason,
+                duration_seconds=int(monotonic() - started),
+                remaining_percent=error.remaining_percent,
+            )
+        results.append(result)
+        on_result(result)
+    return tuple(results)
 
 
 def parse_self_test_status(payload: dict[str, Any]) -> SmartSelfTestStatus:

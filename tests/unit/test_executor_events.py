@@ -3,11 +3,12 @@ from pathlib import Path
 
 import pytest
 
-from backup_system.common.events import SmartObserved, StageChanged
+from backup_system.common.events import SmartObserved, SmartTestDiskFinished, StageChanged
 from backup_system.common.smart import SmartMetrics
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.executor_events import ExecutorEventIngestor
 from backup_system.manager.notifications import NotificationRepository
+from backup_system.manager.operations import OperationsRepository
 from backup_system.manager.smart_history import SmartHistoryRepository
 
 
@@ -84,3 +85,30 @@ def test_unrelated_event_does_not_touch_smart_history() -> None:
         )
         is None
     )
+
+
+def test_self_test_result_is_bound_to_run(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    operations = OperationsRepository(connection)
+    now = datetime.now(UTC)
+    operations.upsert_job(job_id="smart", display_name="SMART", enabled=True, config_valid=True)
+    operations.enqueue(
+        deduplication_key="smart:test", job_id="smart", kind="smart-test",
+        trigger_source="manual", queued_at=now,
+    )
+    run = operations.claim_next(started_at=now)
+    assert run is not None
+    ingestor = ExecutorEventIngestor(SmartHistoryRepository(connection))
+    ingestor.ingest(
+        SmartTestDiskFinished(
+            event="smart_test_disk_finished", timestamp=now, disk_id="system-disk-1",
+            identity_key="a" * 64, test_type="short", result="timeout",
+            reason="SMART self-test completion timed out", duration_seconds=900,
+            remaining_percent=90,
+        ),
+        run_id=run.run_id,
+    )
+    assert connection.execute(
+        "SELECT result, remaining_percent FROM smart_test_results"
+    ).fetchone() == ("timeout", 90)
+    connection.close()

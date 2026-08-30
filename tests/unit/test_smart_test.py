@@ -119,7 +119,7 @@ def test_multi_disk_test_continues_after_one_disk_fails() -> None:
         update={"identity": _disk().identity.model_copy(update={"device": "/dev/pd3"})}
     )
     observed: list[tuple[int, int]] = []
-    failures = run_smart_self_tests(
+    results = run_smart_self_tests(
         backend=backend,
         disks=(_disk(), second),
         test_type="short",
@@ -128,7 +128,8 @@ def test_multi_disk_test_continues_after_one_disk_fails() -> None:
         checkpoint=lambda: None,
         on_disk=lambda index, total: observed.append((index, total)),
     )
-    assert failures == ("test-disk",)
+    assert [result.result for result in results] == ["failed", "success"]
+    assert results[0].reason == "configured SMART disk serial does not match"
     assert observed == [(1, 2), (2, 2)]
 
 

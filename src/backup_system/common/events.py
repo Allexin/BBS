@@ -81,6 +81,17 @@ class SmartObserved(EventBase):
     reason: str | None = None
 
 
+class SmartTestDiskFinished(EventBase):
+    event: Literal["smart_test_disk_finished"]
+    disk_id: str
+    identity_key: str = Field(pattern=r"^[0-9a-f]{64}$")
+    test_type: Literal["short", "long"]
+    result: Literal["success", "failed", "timeout", "unsupported"]
+    reason: str
+    duration_seconds: int = Field(ge=0)
+    remaining_percent: int | None = Field(default=None, ge=0, le=100)
+
+
 class RunFinished(EventBase):
     event: Literal["run_finished"]
     result: Literal["success", "warning", "failed", "cancelled", "interrupted"]
@@ -99,6 +110,7 @@ KnownExecutorEvent = Annotated[
     | DiskOfflineConfirmed
     | DiskOfflineFailed
     | SmartObserved
+    | SmartTestDiskFinished
     | RunFinished,
     Field(discriminator="event"),
 ]
@@ -127,6 +139,7 @@ def parse_executor_event(value: dict[str, Any]) -> KnownExecutorEvent | UnknownE
         "disk_offline_confirmed",
         "disk_offline_failed",
         "smart_observed",
+        "smart_test_disk_finished",
         "run_finished",
     }
     if value.get("event") not in known_names:

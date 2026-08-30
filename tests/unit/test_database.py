@@ -8,6 +8,7 @@ from backup_system.manager.database import SchemaVersionError, open_manager_data
 EXPECTED_TABLES = {
     "backup_metrics",
     "disk_observations",
+    "smart_test_results",
     "daily_report_state",
     "jobs",
     "notifications",
@@ -45,10 +46,11 @@ def test_database_is_configured_and_migrated_idempotently(tmp_path: Path) -> Non
             (5,),
             (6,),
             (7,),
+            (8,),
         ]
 
     with open_manager_database(path) as connection:
-        assert connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone() == (7,)
+        assert connection.execute("SELECT COUNT(*) FROM schema_migrations").fetchone() == (8,)
 
 
 def test_foreign_keys_and_unfinished_operation_uniqueness_are_enforced(tmp_path: Path) -> None:
@@ -88,7 +90,7 @@ def test_newer_schema_is_rejected(tmp_path: Path) -> None:
     connection.execute(
         "CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL)"
     )
-    connection.execute("INSERT INTO schema_migrations VALUES (8, 'future')")
+    connection.execute("INSERT INTO schema_migrations VALUES (9, 'future')")
     connection.commit()
     connection.close()
 

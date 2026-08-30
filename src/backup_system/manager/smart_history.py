@@ -53,6 +53,10 @@ class SmartHistoryRepository:
         self._connection = connection
         self._notifications = notifications
 
+    @property
+    def connection(self) -> sqlite3.Connection:
+        return self._connection
+
     def record(
         self,
         *,

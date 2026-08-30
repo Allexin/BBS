@@ -70,6 +70,14 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
             )
         with connection:
             connection.execute(
+                """INSERT INTO smart_test_results(
+                    run_id, disk_id, identity_key, test_type, result, reason,
+                    duration_seconds, remaining_percent, finished_at
+                ) VALUES (?, 'internal-disk-key', ?, 'short', 'timeout',
+                    'SMART self-test completion timed out', 900, 90, ?)""",
+                (str(finished_run.run_id), "SECRET-SERIAL", now.isoformat()),
+            )
+            connection.execute(
                 """INSERT INTO volumes(
                     volume_id, public_volume_id, disk_id, display_name, label,
                     filesystem, role, last_seen_at
@@ -111,6 +119,9 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         assert metric.change_24h == 2
         assert metric.change_30d == 3
         assert metric.last_regression_at == now - timedelta(hours=1)
+        assert status.disks[0].last_self_test is not None
+        assert status.disks[0].last_self_test.result == "timeout"
+        assert status.disks[0].last_self_test.remaining_percent == 90
         assert status.volumes[0].used_bytes == 7500
         assert status.volumes[0].free_percent == 25
         assert not status.volumes[0].stale

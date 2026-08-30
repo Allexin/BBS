@@ -85,6 +85,15 @@ class PublicSmartMetric(PublicModel):
     last_regression_at: AwareDatetime | None = None
 
 
+class PublicSmartSelfTest(PublicModel):
+    result: Literal["success", "failed", "timeout", "unsupported"]
+    test_type: Literal["short", "long"]
+    reason: str
+    finished_at: AwareDatetime
+    duration_seconds: int = Field(ge=0)
+    remaining_percent: int | None = Field(default=None, ge=0, le=100)
+
+
 class PublicDisk(PublicModel):
     disk_id: str
     model: str | None = None
@@ -96,6 +105,7 @@ class PublicDisk(PublicModel):
     smart_health: Literal["healthy", "warning", "critical", "unknown"]
     observed_at: AwareDatetime | None = None
     metrics: dict[str, PublicSmartMetric]
+    last_self_test: PublicSmartSelfTest | None = None
 
 
 class PublicVolume(PublicModel):

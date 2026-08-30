@@ -20,6 +20,7 @@ from backup_system.manager.public_projection import (
     PublicProgress,
     PublicRun,
     PublicSmartMetric,
+    PublicSmartSelfTest,
     PublicVolume,
     StatusProjection,
 )
@@ -278,11 +279,23 @@ class ProjectionBuilder:
         for row in rows:
             observations = self._successful_observations(str(row[0]))
             latest_row = self._connection.execute(
-                """SELECT observed_at, operational_state, smart_health FROM disk_observations
+                """SELECT observed_at, operational_state, smart_health, normalized_json
+                FROM disk_observations
                 WHERE disk_id = ? ORDER BY observation_id DESC LIMIT 1""",
                 (str(row[0]),),
             ).fetchone()
             metrics = self._smart_metrics(observations, now)
+            latest_identity = (
+                str(json.loads(str(latest_row[3])).get("identity_key"))
+                if latest_row else None
+            )
+            test_row = self._connection.execute(
+                """SELECT result, test_type, reason, finished_at, duration_seconds,
+                    remaining_percent FROM smart_test_results
+                WHERE disk_id = ? AND identity_key = ?
+                ORDER BY result_id DESC LIMIT 1""",
+                (str(row[0]), latest_identity),
+            ).fetchone()
             operational = _operational(str(latest_row[1])) if latest_row else "unknown"
             smart_health = _smart_health(str(latest_row[2])) if latest_row else "unknown"
             public_id = str(row[1])
@@ -307,6 +320,17 @@ class ProjectionBuilder:
                     smart_health=smart_health,
                     observed_at=datetime.fromisoformat(str(latest_row[0])) if latest_row else None,
                     metrics=metrics,
+                    last_self_test=(
+                        PublicSmartSelfTest(
+                            result=test_row[0],
+                            test_type=test_row[1],
+                            reason=str(test_row[2]),
+                            finished_at=datetime.fromisoformat(str(test_row[3])),
+                            duration_seconds=int(test_row[4]),
+                            remaining_percent=test_row[5],
+                        )
+                        if test_row else None
+                    ),
                 )
             )
         return tuple(disks), tuple(issues)

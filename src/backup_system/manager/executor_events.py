@@ -15,6 +15,7 @@ from backup_system.common.events import (
     RunFinished,
     RunStarted,
     SmartObserved,
+    SmartTestDiskFinished,
     SnapshotCreated,
     StageChanged,
 )
@@ -26,7 +27,25 @@ class ExecutorEventIngestor:
     def __init__(self, smart_history: SmartHistoryRepository) -> None:
         self._smart_history = smart_history
 
-    def ingest(self, event: KnownExecutorEvent) -> SmartComparison | None:
+    def ingest(
+        self, event: KnownExecutorEvent, *, run_id: UUID | None = None
+    ) -> SmartComparison | None:
+        if isinstance(event, SmartTestDiskFinished):
+            if run_id is None:
+                raise ValueError("SMART self-test result requires a run ID")
+            with self._smart_history.connection:
+                self._smart_history.connection.execute(
+                    """INSERT INTO smart_test_results(
+                        run_id, disk_id, identity_key, test_type, result, reason,
+                        duration_seconds, remaining_percent, finished_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    (
+                        str(run_id), event.disk_id, event.identity_key, event.test_type,
+                        event.result, event.reason, event.duration_seconds,
+                        event.remaining_percent, event.timestamp.isoformat(),
+                    ),
+                )
+            return None
         if not isinstance(event, SmartObserved):
             return None
         if event.collection_success and event.identity_key is None:
@@ -101,7 +120,9 @@ class ExecutorRunEventProcessor:
             )
             return None
         if isinstance(event, SmartObserved):
-            return self._smart.ingest(event)
+            return self._smart.ingest(event, run_id=self._run_id)
+        if isinstance(event, SmartTestDiskFinished):
+            return self._smart.ingest(event, run_id=self._run_id)
         if isinstance(event, DiskOfflineConfirmed):
             self._set_offline_state(True)
             return None

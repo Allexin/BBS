@@ -11,6 +11,7 @@ from backup_system.common.config import (
     ExecutorJobConfig,
     MaintenanceJobConfig,
     MirrorJobConfig,
+    SmartConfig,
     SmartTestJobConfig,
     SnapshotJobConfig,
     validate_job_id,
@@ -20,7 +21,7 @@ from backup_system.common.config_io import (
     load_smart_config,
     validate_job_with_owner,
 )
-from backup_system.common.events import EventBase, StageChanged
+from backup_system.common.events import EventBase, SmartTestDiskFinished, StageChanged
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
@@ -51,6 +52,7 @@ from backup_system.executor.smart_preflight import (
 )
 from backup_system.executor.smart_test import (
     SmartSelfTestError,
+    SmartSelfTestResult,
     SubprocessSmartSelfTestBackend,
     run_smart_self_tests,
 )
@@ -146,7 +148,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                         )
                     )
 
-                failures = run_smart_self_tests(
+                def report_result(result: SmartSelfTestResult) -> None:
+                    event_sink(
+                        SmartTestDiskFinished(
+                            event="smart_test_disk_finished",
+                            timestamp=utc_now(),
+                            disk_id=result.disk.id,
+                            identity_key=result.identity_key,
+                            test_type=config.test_type,
+                            result=result.result,
+                            reason=result.reason,
+                            duration_seconds=result.duration_seconds,
+                            remaining_percent=result.remaining_percent,
+                        )
+                    )
+
+                results = run_smart_self_tests(
                     backend=backend,
                     disks=disks,
                     test_type=config.test_type,
@@ -154,7 +171,23 @@ def main(argv: Sequence[str] | None = None) -> int:
                     timeout_seconds=config.timeout_seconds,
                     checkpoint=token.raise_if_requested,
                     on_disk=report_disk,
+                    on_result=report_result,
                 )
+                observation_config = (
+                    SmartConfig(
+                        per_disk_timeout_seconds=smart_config.per_disk_timeout_seconds,
+                        stale_after_hours=smart_config.stale_after_hours,
+                        disks=disks,
+                    )
+                    if config.target.mode == "all-system"
+                    else smart_config
+                )
+                observations = SmartPreflight(
+                    SubprocessSmartctlBackend(root / "bin" / "smartctl.exe"),
+                    cancellation_checkpoint=token.raise_if_requested,
+                ).collect(observation_config)
+                smart_sink(observations)
+                failures = tuple(result for result in results if result.result != "success")
                 if failures:
                     raise SmartSelfTestError(
                         f"SMART self-test failed for {len(failures)} of {len(disks)} disks"
@@ -168,11 +201,6 @@ def main(argv: Sequence[str] | None = None) -> int:
                         ),
                     )
                 )
-                observations = SmartPreflight(
-                    SubprocessSmartctlBackend(root / "bin" / "smartctl.exe"),
-                    cancellation_checkpoint=token.raise_if_requested,
-                ).collect(smart_config)
-                smart_sink(observations)
             except BaseException as error:
                 raise LifecycleOperationError(error) from error
 
