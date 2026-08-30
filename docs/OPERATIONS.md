@@ -50,7 +50,8 @@ For the corrective rollout, run the guarded wrapper from an elevated PowerShell:
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_stable_update.ps1 -Stable C:\BackupSystem\Stable -NginxAccount <service-account>
 ```
 
-The wrapper requires approved `nssm.exe` and `uv.exe` builds in the elevated PATH.
+The wrapper requires an approved `nssm.exe` in the elevated PATH. It looks for uv in
+Dev `.venv\Scripts\uv.exe`, `.poc-work\tools\uv\uv.exe`, and then PATH.
 
 The tool requests UAC elevation and refuses to proceed unless the service is already
 stopped. It copies only the release manifest, builds a new frozen non-editable `.venv`,

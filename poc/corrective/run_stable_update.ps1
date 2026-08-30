@@ -19,11 +19,21 @@ if (-not $principal.IsInRole($adminRole)) {
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $python = Join-Path $repo '.venv\Scripts\python.exe'
 $nssm = (Get-Command nssm.exe -CommandType Application -ErrorAction Stop).Source
-$uvCommand = Get-Command uv.exe -CommandType Application -ErrorAction SilentlyContinue
-if ($null -eq $uvCommand) {
-    throw 'uv.exe is not available in PATH. Install the approved uv build before updating Stable.'
+$devUv = Join-Path $repo '.venv\Scripts\uv.exe'
+$toolUv = Join-Path $repo '.poc-work\tools\uv\uv.exe'
+if (Test-Path -LiteralPath $devUv -PathType Leaf) {
+    $uv = $devUv
+} elseif (Test-Path -LiteralPath $toolUv -PathType Leaf) {
+    $uv = $toolUv
+} else {
+    $uvCommand = Get-Command uv.exe -CommandType Application -ErrorAction SilentlyContinue
+    if ($null -ne $uvCommand) {
+        $uv = $uvCommand.Source
+    }
 }
-$uv = $uvCommand.Source
+if ([string]::IsNullOrWhiteSpace($uv)) {
+    throw 'Approved uv.exe was not found in Dev, .poc-work\tools\uv, or PATH.'
+}
 
 & $python -m backup_system.deployment.deploy `
     --source $repo `
