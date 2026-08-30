@@ -78,7 +78,7 @@ def main() -> int:
     }
 
     jobs_dir = config / "jobs"
-    with tempfile.TemporaryDirectory(prefix="bbs-smart-config-", dir=config.parent) as temporary:
+    with tempfile.TemporaryDirectory(prefix=".bbs-smart-config-", dir=config) as temporary:
         staged_config = Path(temporary) / "config"
         staged_jobs = staged_config / "jobs"
         staged_jobs.mkdir(parents=True)
