@@ -16,6 +16,8 @@ from backup_system.common.events import KnownExecutorEvent, UnknownExecutorEvent
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.time import utc_now
 from backup_system.manager.command_processor import CommandProcessor
+from backup_system.manager.daily_reports import DailyReportStore
+from backup_system.manager.deadlines import DeadlineMonitor, deadline_for
 from backup_system.manager.executor_events import ExecutorEventIngestor, ExecutorRunEventProcessor
 from backup_system.manager.executor_process import ExecutorProcessResult, ExecutorProcessRunner
 from backup_system.manager.executor_protocol import ExecutorInvocation
@@ -72,6 +74,7 @@ class ManagerApplication:
         self._active_executor: ExecutorTransport | None = None
         self._active_task: asyncio.Task[None] | None = None
         self._started_at = utc_now()
+        self._last_health = "unknown"
         connection = operations.connection
         notifications = NotificationRepository(connection)
         self._spool = CommandSpool(layout)
@@ -87,6 +90,8 @@ class ManagerApplication:
             SchedulerEventRepository(connection),
             notifications,
         )
+        self._deadlines = DeadlineMonitor(connection, notifications)
+        self._daily_reports = DailyReportStore(connection, notifications)
         self._smart = ExecutorEventIngestor(
             SmartHistoryRepository(connection, notifications)
         )
@@ -105,6 +110,12 @@ class ManagerApplication:
         now = utc_now()
         for job in self._config.jobs:
             self._schedules.reconcile_startup(job.id, job.schedule, now=now)
+        telegram = self._config.telegram
+        self._daily_reports.reconcile_startup(
+            cron=telegram.daily_report_cron,
+            timezone=telegram.daily_report_timezone,
+            now=now,
+        )
 
     def stop_accepting(self) -> None:
         self._accepting = False
@@ -119,6 +130,7 @@ class ManagerApplication:
             manager_state=state,
             version=__version__,
         )
+        self._last_health = status.overall_health
         self._projection_publisher.publish(status, health)
 
     def request_executor_cancel(self) -> None:
@@ -151,6 +163,15 @@ class ManagerApplication:
                         now=now,
                         poll_seconds=self._config.scheduler.poll_seconds,
                     )
+            self._deadlines.sweep(now=now)
+            telegram = self._config.telegram
+            self._daily_reports.poll(
+                cron=telegram.daily_report_cron,
+                timezone=telegram.daily_report_timezone,
+                health=self._last_health,
+                now=now,
+                poll_seconds=self._config.scheduler.poll_seconds,
+            )
         if not self._accepting:
             return False
         if self._active_task is not None:
@@ -161,6 +182,7 @@ class ManagerApplication:
         claimed = self._operations.claim_next()
         if claimed is None:
             return False
+        self._assign_deadline(claimed)
         self._active_task = asyncio.create_task(self._execute(claimed))
         await asyncio.sleep(0)
         if self._active_task.done():
@@ -222,6 +244,18 @@ class ManagerApplication:
             stream.flush()
             os.fsync(stream.fileno())
         return path.resolve()
+
+    def _assign_deadline(self, claimed: ClaimedRun) -> None:
+        if claimed.scheduled_at is None:
+            self._deadlines.assign(claimed.run_id, None)
+            return
+        job = next((item for item in self._config.jobs if item.id == claimed.job_id), None)
+        if job is None:
+            raise ValueError("claimed run has no manager job configuration")
+        self._deadlines.assign(
+            claimed.run_id,
+            deadline_for(job.schedule, claimed.scheduled_at),
+        )
 
     def _record_schedule_completion(
         self, claimed: ClaimedRun, result: ExecutorProcessResult
