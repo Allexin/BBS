@@ -32,7 +32,10 @@ def apply_administrative_acl(
     if not path.exists() or _is_reparse(path):
         raise StableAclError("administrative ACL target is missing or unsafe")
     selected = backend or _Pywin32SecurityBackend()
-    selected.apply_and_verify(path, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+    inheritance = "OICI" if path.is_dir() else ""
+    selected.apply_and_verify(
+        path, f"D:P(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;BA)"
+    )
 
 
 def stable_acl_targets(nginx_sid: str) -> tuple[AclTarget, ...]:
