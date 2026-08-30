@@ -85,6 +85,18 @@ class OperationsRepository:
         self._connection = connection
         self._notifications = notifications
 
+    @property
+    def connection(self) -> sqlite3.Connection:
+        """Expose the manager-owned connection to composed repositories."""
+        return self._connection
+
+    def run_is_active(self, run_id: UUID) -> bool:
+        row = self._connection.execute(
+            "SELECT 1 FROM runs WHERE run_id = ? AND state = ?",
+            (str(run_id), RunState.RUNNING),
+        ).fetchone()
+        return row is not None
+
     def upsert_job(
         self,
         *,

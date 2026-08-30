@@ -5,9 +5,11 @@ from __future__ import annotations
 import asyncio
 import signal
 from collections.abc import Awaitable, Callable
+from contextlib import suppress
 from pathlib import Path
 
 from backup_system.common.config import ManagerConfig
+from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 from backup_system.manager.operations import OperationsRepository
@@ -68,19 +70,33 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
             )
         operations.reconcile_startup()
 
-        async def no_active_executor() -> None:
+        application = ManagerApplication(
+            layout=layout,
+            config=config,
+            operations=operations,
+        )
+        application.initialize()
+
+        async def publish_final_status() -> None:
+            # Projection publication is connected in the next corrective slice.
             return None
 
         lifecycle = ServiceLifecycle(
             operations=operations,
-            stop_accepting=lambda: None,
-            cancel_executor=no_active_executor,
-            wait_executor=no_active_executor,
-            publish_final_status=no_active_executor,
+            stop_accepting=application.stop_accepting,
+            cancel_executor=application.cancel_executor,
+            wait_executor=application.wait_executor,
+            publish_final_status=publish_final_status,
         )
         _install_console_stop(lifecycle)
+        worker = asyncio.create_task(
+            _run_manager_loop(application, poll_seconds=config.scheduler.poll_seconds)
+        )
         await lifecycle.wait_for_stop()
         await lifecycle.shutdown()
+        worker.cancel()
+        with suppress(asyncio.CancelledError):
+            await worker
     finally:
         connection.close()
 
@@ -95,3 +111,12 @@ def _install_console_stop(lifecycle: ServiceLifecycle) -> None:
     signal.signal(signal.SIGINT, request_stop)
     if hasattr(signal, "SIGBREAK"):
         signal.signal(signal.SIGBREAK, request_stop)
+
+
+async def _run_manager_loop(
+    application: ManagerApplication, *, poll_seconds: int
+) -> None:
+    while application.accepting:
+        executed = await application.run_iteration()
+        if not executed:
+            await asyncio.sleep(poll_seconds)
