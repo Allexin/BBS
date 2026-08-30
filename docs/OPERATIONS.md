@@ -25,13 +25,13 @@ nssm stop BBS
 nssm start BBS
 ```
 
-For a normal configuration change, use the validated restart wrapper from an elevated
-Dev PowerShell. It validates the complete Stable config before touching the service,
+For a normal configuration change, run the validated launcher from the Stable root in
+an elevated terminal. It validates the complete Stable config before touching the service,
 then requires both `SERVICE_RUNNING` and a fresh matching health/status projection from
 the new manager process:
 
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage10\restart_stable_service.ps1
+```bat
+restart-bbs.bat
 ```
 
 Stop is intentionally unbounded. Manager stops accepting commands and schedules,

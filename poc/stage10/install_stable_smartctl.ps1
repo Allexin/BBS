@@ -10,6 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $source = Join-Path $projectRoot '.poc-work\tools\smartmontools\bin\smartctl.exe'
+$restartSource = Join-Path $projectRoot 'restart-bbs.bat'
 
 try {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -25,6 +26,9 @@ try {
     if (-not (Test-Path $source -PathType Leaf)) {
         throw 'Pinned Dev smartctl 7.5 is missing.'
     }
+    if (-not (Test-Path $restartSource -PathType Leaf)) {
+        throw 'Stable restart launcher is missing from Dev.'
+    }
     $stableRoot = (Resolve-Path $Stable).Path
     if (-not (Test-Path (Join-Path $stableRoot 'backup-system.root') -PathType Leaf)) {
         throw 'Stable root marker is missing.'
@@ -36,10 +40,11 @@ try {
     if ($LASTEXITCODE -ne 0) {
         throw "Stable ACL setup failed with exit code $LASTEXITCODE."
     }
-    Write-Output '[2/2] Installing pinned smartctl into protected Stable bin.'
+    Write-Output '[2/2] Installing pinned smartctl and the Stable restart launcher.'
     $bin = Join-Path $stableRoot 'bin'
     New-Item -ItemType Directory -Path $bin -Force | Out-Null
     Copy-Item -LiteralPath $source -Destination (Join-Path $bin 'smartctl.exe') -Force
+    Copy-Item -LiteralPath $restartSource -Destination (Join-Path $stableRoot 'restart-bbs.bat') -Force
     $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath (Join-Path $bin 'smartctl.exe')).Hash
     Write-Output "Pinned smartctl installed once. SHA256: $hash"
 }

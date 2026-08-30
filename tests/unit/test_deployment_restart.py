@@ -1,6 +1,14 @@
 from datetime import UTC, datetime, timedelta
+from pathlib import Path
 
 from backup_system.deployment.restart import _is_fresh_response
+
+
+def test_stable_restart_launcher_uses_only_stable_runtime() -> None:
+    launcher = (Path(__file__).parents[2] / "restart-bbs.bat").read_text(encoding="utf-8")
+    assert "%~dp0.venv\\Scripts\\python.exe" in launcher
+    assert "backup_system.deployment.restart" in launcher
+    assert "poc" not in launcher.casefold()
 
 
 def test_fresh_response_requires_new_process_and_matching_projection() -> None:

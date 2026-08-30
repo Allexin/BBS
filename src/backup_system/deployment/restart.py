@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 import time
@@ -54,7 +55,8 @@ def restart_and_verify(
     python = root / ".venv" / "Scripts" / "python.exe"
     config = root / "data" / "config" / "manager.yaml"
     public = root / "data" / "public"
-    if not python.is_file() or not config.is_file() or not nssm.is_file():
+    nssm_path = nssm if nssm.is_file() else Path(shutil.which(str(nssm)) or "")
+    if not python.is_file() or not config.is_file() or not nssm_path.is_file():
         raise RestartError("Stable runtime, config, or NSSM executable is missing")
 
     print("[1/4] Validating the complete Stable configuration.", flush=True)
@@ -72,14 +74,14 @@ def restart_and_verify(
     previous_started = previous.get("manager_started_at") if previous else None
     requested_at = datetime.now(UTC)
     print(f"[2/4] Restarting Windows service {service!r}.", flush=True)
-    restarted = _run([str(nssm), "restart", service])
+    restarted = _run([str(nssm_path), "restart", service])
     if restarted.returncode != 0:
         raise RestartError(f"NSSM restart failed: {_bounded_output(restarted)}")
 
     deadline = time.monotonic() + timeout_seconds
     print("[3/4] Waiting for SERVICE_RUNNING.", flush=True)
     while True:
-        status = _service_status(nssm, service)
+        status = _service_status(nssm_path, service)
         if status == SERVICE_RUNNING:
             break
         if time.monotonic() >= deadline:
@@ -104,7 +106,7 @@ def restart_and_verify(
                 flush=True,
             )
             return
-        current = _service_status(nssm, service)
+        current = _service_status(nssm_path, service)
         if current != SERVICE_RUNNING:
             raise RestartError(f"service left SERVICE_RUNNING and is now {current!r}")
         time.sleep(1)
