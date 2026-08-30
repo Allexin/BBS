@@ -20,7 +20,6 @@ def test_nssm_settings_enforce_cooperative_stop_and_restart_policy(tmp_path: Pat
     assert settings[("AppExit", "40")] == "Exit"
     assert settings[("AppRestartDelay", None)] == "10000"
     assert settings[("AppStopMethodSkip", None)] == str(STOP_METHOD_SKIP)
-    assert settings[("AppKillProcessTree", None)] == "0"
     assert settings[("AppStopMethodConsole", None)] == str(INFINITE_WINDOWS_WAIT_MS)
 
 
@@ -47,7 +46,15 @@ class _Nssm:
 
 def test_configuration_uses_argv_and_verifies_every_setting(tmp_path: Path) -> None:
     fake = _Nssm()
-    configure_service(nssm=tmp_path / "nssm.exe", service_name="BBS", root=tmp_path, run=fake)
+    registry: dict[str, int] = {}
+    configure_service(
+        nssm=tmp_path / "nssm.exe",
+        service_name="BBS",
+        root=tmp_path,
+        run=fake,
+        write_registry=registry.__setitem__,
+        read_registry=registry.__getitem__,
+    )
     install = fake.commands[1]
     assert install[1:4] == ["install", "BBS", str(tmp_path / ".venv/Scripts/python.exe")]
     assert sum(command[1] == "get" for command in fake.commands) == len(service_settings(tmp_path))
@@ -58,13 +65,18 @@ def test_readback_mismatch_blocks_configuration(tmp_path: Path) -> None:
 
     def corrupt(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
         result = fake(argv)
-        if list(argv)[1:4] == ["get", "BBS", "AppKillProcessTree"]:
+        if list(argv)[1:4] == ["get", "BBS", "AppRestartDelay"]:
             return subprocess.CompletedProcess(list(argv), 0, "1\n", "")
         return result
 
     with pytest.raises(NssmConfigurationError, match="read back"):
         configure_service(
-            nssm=tmp_path / "nssm.exe", service_name="BBS", root=tmp_path, run=corrupt
+            nssm=tmp_path / "nssm.exe",
+            service_name="BBS",
+            root=tmp_path,
+            run=corrupt,
+            write_registry=lambda name, value: None,
+            read_registry=lambda name: 0,
         )
 
 
@@ -77,8 +89,26 @@ def test_existing_service_is_updated_without_reinstall(tmp_path: Path) -> None:
         return fake(argv)
 
     configure_service(
-        nssm=tmp_path / "nssm.exe", service_name="BBS", root=tmp_path, run=existing
+        nssm=tmp_path / "nssm.exe",
+        service_name="BBS",
+        root=tmp_path,
+        run=existing,
+        write_registry=lambda name, value: None,
+        read_registry=lambda name: 0,
     )
     assert not any(command[1] == "install" for command in fake.commands)
     assert any(command[1:4] == ["set", "BBS", "Application"] for command in fake.commands)
     assert any(command[1:4] == ["set", "BBS", "AppParameters"] for command in fake.commands)
+
+
+def test_registry_readback_mismatch_blocks_configuration(tmp_path: Path) -> None:
+    fake = _Nssm()
+    with pytest.raises(NssmConfigurationError, match="AppKillProcessTree"):
+        configure_service(
+            nssm=tmp_path / "nssm.exe",
+            service_name="BBS",
+            root=tmp_path,
+            run=fake,
+            write_registry=lambda name, value: None,
+            read_registry=lambda name: 1,
+        )

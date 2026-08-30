@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 import time
+import winreg
 from pathlib import Path
 from uuid import uuid4
 
@@ -25,6 +26,18 @@ def run(argv: list[str], *, check: bool = True) -> subprocess.CompletedProcess[s
 
 def set_value(nssm: Path, service: str, name: str, *values: str) -> None:
     run([str(nssm), "set", service, name, *values])
+
+
+def set_kill_process_tree(service: str) -> None:
+    path = rf"SYSTEM\CurrentControlSet\Services\{service}\Parameters"
+    with winreg.OpenKey(
+        winreg.HKEY_LOCAL_MACHINE, path, 0, winreg.KEY_SET_VALUE | winreg.KEY_QUERY_VALUE
+    ) as key:
+        winreg.SetValueEx(key, "AppKillProcessTree", 0, winreg.REG_DWORD, 0)
+        winreg.FlushKey(key)
+        value, value_type = winreg.QueryValueEx(key, "AppKillProcessTree")
+    if value_type != winreg.REG_DWORD or value != 0:
+        raise RuntimeError("AppKillProcessTree registry read-back failed")
 
 
 def wait_file(path: Path, timeout: float = 20) -> None:
@@ -60,7 +73,7 @@ def main() -> int:
             ]
         )
         set_value(nssm, cleanup_service, "AppStopMethodSkip", "14")
-        set_value(nssm, cleanup_service, "AppKillProcessTree", "0")
+        set_kill_process_tree(cleanup_service)
         set_value(nssm, cleanup_service, "AppStopMethodConsole", "4294967295")
         run([str(nssm), "start", cleanup_service])
         wait_file(cleanup.with_suffix(".ready"))
@@ -95,6 +108,8 @@ def main() -> int:
             config_invalid_starts=len(starts),
             config_invalid_status=status,
         )
+    except Exception as error:
+        result["error"] = str(error)
     finally:
         for service in services:
             run([str(nssm), "stop", service], check=False)
@@ -103,7 +118,7 @@ def main() -> int:
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(f"Result saved to: {args.output}")
-    return 0
+    return 0 if result["passed"] else 1
 
 
 if __name__ == "__main__":
