@@ -9,6 +9,7 @@ from contextlib import suppress
 from pathlib import Path
 
 from backup_system.common.config import ManagerConfig
+from backup_system.common.config_io import validate_job_with_owner
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
@@ -74,19 +75,20 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
             layout=layout,
             config=config,
             operations=operations,
+            job_kinds={
+                job.id: validate_job_with_owner(layout.config, job.id).kind
+                for job in config.jobs
+            },
         )
         application.initialize()
-
-        async def publish_final_status() -> None:
-            # Projection publication is connected in the next corrective slice.
-            return None
+        await application.publish("starting")
 
         lifecycle = ServiceLifecycle(
             operations=operations,
             stop_accepting=application.stop_accepting,
             cancel_executor=application.cancel_executor,
             wait_executor=application.wait_executor,
-            publish_final_status=publish_final_status,
+            publish_final_status=lambda: application.publish("stopping"),
         )
         _install_console_stop(lifecycle)
         worker = asyncio.create_task(
@@ -118,5 +120,6 @@ async def _run_manager_loop(
 ) -> None:
     while application.accepting:
         executed = await application.run_iteration()
+        await application.publish("running" if executed else "idle")
         if not executed:
             await asyncio.sleep(poll_seconds)

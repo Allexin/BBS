@@ -119,6 +119,11 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         assert connection.execute(
             "SELECT result, exit_code, disk_offline_confirmed FROM runs"
         ).fetchone() == ("success", 0, 1)
+        asyncio.run(application.publish("idle"))
+        status = (layout.public / "status.json").read_text(encoding="utf-8")
+        health = (layout.public / "health.json").read_text(encoding="utf-8")
+        assert '"result":"success"' in status
+        assert '"manager_state":"idle"' in health
         assert not tuple(layout.commands_incoming.iterdir())
         assert (layout.commands_completed / f"{command.command_id}.json").is_file()
     finally:

@@ -8,8 +8,9 @@ import os
 import sys
 from collections.abc import Callable
 from pathlib import Path
-from typing import Protocol
+from typing import Literal, Protocol
 
+from backup_system import __version__
 from backup_system.common.config import ManagerConfig
 from backup_system.common.events import KnownExecutorEvent, UnknownExecutorEvent
 from backup_system.common.exit_codes import ExecutorExitCode
@@ -21,6 +22,8 @@ from backup_system.manager.executor_protocol import ExecutorInvocation
 from backup_system.manager.layout import RuntimeLayout
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import ClaimedRun, OperationsRepository, RunResult
+from backup_system.manager.projection_builder import ProjectionBuilder
+from backup_system.manager.public_projection import ProjectionPublisher
 from backup_system.manager.schedule_store import ScheduleStore
 from backup_system.manager.scheduler_events import SchedulerEventRepository
 from backup_system.manager.smart_history import SmartHistoryRepository
@@ -59,6 +62,7 @@ class ManagerApplication:
         config: ManagerConfig,
         operations: OperationsRepository,
         executor_factory: ExecutorFactory = _default_executor_factory,
+        job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance"]] | None = None,
     ) -> None:
         self._layout = layout
         self._config = config
@@ -67,6 +71,7 @@ class ManagerApplication:
         self._accepting = True
         self._active_executor: ExecutorTransport | None = None
         self._active_task: asyncio.Task[None] | None = None
+        self._started_at = utc_now()
         connection = operations.connection
         notifications = NotificationRepository(connection)
         self._spool = CommandSpool(layout)
@@ -85,6 +90,12 @@ class ManagerApplication:
         self._smart = ExecutorEventIngestor(
             SmartHistoryRepository(connection, notifications)
         )
+        self._projection_builder = ProjectionBuilder(
+            connection,
+            job_kinds=job_kinds,
+            job_deadlines={job.id: job.schedule.deadline for job in config.jobs},
+        )
+        self._projection_publisher = ProjectionPublisher(layout.public)
 
     @property
     def accepting(self) -> bool:
@@ -97,6 +108,18 @@ class ManagerApplication:
 
     def stop_accepting(self) -> None:
         self._accepting = False
+
+    async def publish(
+        self, state: Literal["starting", "idle", "running", "stopping", "error"]
+    ) -> None:
+        now = utc_now()
+        status, health = self._projection_builder.build(
+            now=now,
+            manager_started_at=self._started_at,
+            manager_state=state,
+            version=__version__,
+        )
+        self._projection_publisher.publish(status, health)
 
     def request_executor_cancel(self) -> None:
         executor = self._active_executor
