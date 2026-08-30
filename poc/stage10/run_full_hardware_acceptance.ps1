@@ -47,9 +47,17 @@ try {
         $step = $steps[$index]
         Write-Output "[$($index + 1)/$($steps.Count)] Starting: $($step.Name)"
         $scriptPath = Join-Path $projectRoot $step.Script
-        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $scriptPath @($step.Arguments)
-        if ($LASTEXITCODE -ne 0) {
-            throw "$($step.Name) failed with exit code $LASTEXITCODE."
+        $processArguments = @(
+            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $scriptPath + '"')
+        ) + @($step.Arguments)
+        $process = Start-Process powershell.exe -ArgumentList $processArguments -NoNewWindow -PassThru
+        $stepStartedAt = [DateTimeOffset]::UtcNow
+        while (-not $process.WaitForExit(10000)) {
+            $elapsed = [int]([DateTimeOffset]::UtcNow - $stepStartedAt).TotalSeconds
+            Write-Output "[$($index + 1)/$($steps.Count)] Still running: $($step.Name) ($elapsed seconds)"
+        }
+        if ($process.ExitCode -ne 0) {
+            throw "$($step.Name) failed with exit code $($process.ExitCode)."
         }
         $completed.Add([string]$step.Name)
         Write-Output "[$($index + 1)/$($steps.Count)] Passed: $($step.Name)"
