@@ -29,6 +29,21 @@ def test_sender_posts_expected_telegram_request() -> None:
     _sender(httpx.MockTransport(handle)).send("hello")
 
 
+def test_sender_can_target_forum_topic() -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        assert request.read() == (
+            b'{"chat_id":"test-chat","text":"hello","message_thread_id":42}'
+        )
+        return httpx.Response(200, json={"ok": True})
+
+    TelegramSender(
+        token="test-token",
+        chat_id="test-chat",
+        message_thread_id=42,
+        client=httpx.Client(transport=httpx.MockTransport(handle)),
+    ).send("hello")
+
+
 def test_dispatcher_marks_successful_notification_sent(tmp_path: Path) -> None:
     connection = open_manager_database(tmp_path / "manager.sqlite3")
     repository = NotificationRepository(connection)

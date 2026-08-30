@@ -1449,13 +1449,15 @@ telegram:
   enabled: true
   token_secret: telegram-bot-token
   chat_id_secret: telegram-chat-id
+  message_thread_id_secret: telegram-thread-id
   daily_report_cron: '0 9 * * *'  # только пример; значение выбирает оператор
   daily_report_timezone: Europe/Samara
   stale_manager_minutes: 10
 
 ```
 
-`token_secret` и `chat_id_secret` являются идентификаторами, а не значениями
+`token_secret`, `chat_id_secret` и `message_thread_id_secret` являются
+идентификаторами, а не значениями
 секретов. Каждый идентификатор соответствует файлу
 `Stable\data\config\secrets\<identifier>.dpapi`. Файл содержит только бинарный blob,
 созданный Windows DPAPI с machine scope, и находится под тем же защищённым ACL, что
@@ -1464,6 +1466,11 @@ symlink/reparse point, ограничивает размер blob и расши�
 процесса. Значение не записывается в SQLite, журналы, public projection, environment
 или command line. Независимая копия Telegram credentials хранится оператором вне
 Stable; DPAPI-файл сам по себе не переносим на другую машину.
+Если задан `message_thread_id_secret`, manager преобразует его значение в
+положительное целое и передаёт как `message_thread_id` во всех вызовах
+`sendMessage`; сообщения в общий чат группы в такой конфигурации не отправляются.
+Если поле отсутствует, `sendMessage` получает только `chat_id`, поэтому тот же
+transport работает с личным чатом, обычной группой или общим чатом forum-группы.
 
 Manager валидирует только эту схему. Для каждого enabled `job.id` он отдельно запускает `backup-executor validate --job <id>` и сохраняет результат проверки.
 

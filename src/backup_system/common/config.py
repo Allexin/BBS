@@ -107,13 +107,16 @@ class TelegramConfig(StrictModel):
     enabled: bool
     token_secret: str = Field(min_length=1)
     chat_id_secret: str = Field(min_length=1)
+    message_thread_id_secret: str | None = Field(default=None, min_length=1)
     daily_report_cron: str
     daily_report_timezone: str
     stale_manager_minutes: int = Field(gt=0)
 
     _valid_cron = field_validator("daily_report_cron")(ScheduleConfig.validate_cron)
     _valid_timezone = field_validator("daily_report_timezone")(_validate_timezone)
-    _secret_ids = field_validator("token_secret", "chat_id_secret")(_validate_job_id)
+    _secret_ids = field_validator(
+        "token_secret", "chat_id_secret", "message_thread_id_secret"
+    )(_validate_job_id)
 
 
 class ManagerConfig(StrictModel):

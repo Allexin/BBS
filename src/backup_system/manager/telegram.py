@@ -22,20 +22,33 @@ class DispatchResult(StrEnum):
 
 
 class TelegramSender:
-    def __init__(self, *, token: str, chat_id: str, client: httpx.Client) -> None:
+    def __init__(
+        self,
+        *,
+        token: str,
+        chat_id: str,
+        client: httpx.Client,
+        message_thread_id: int | None = None,
+    ) -> None:
         if not token or not chat_id:
             raise ValueError("Telegram token and chat ID must not be empty")
         self._token = token
         self._chat_id = chat_id
         self._client = client
+        if message_thread_id is not None and message_thread_id <= 0:
+            raise ValueError("Telegram message thread ID must be positive")
+        self._message_thread_id = message_thread_id
 
     def send(self, text: str) -> None:
         if not text:
             raise ValueError("Telegram message must not be empty")
         try:
+            payload: dict[str, str | int] = {"chat_id": self._chat_id, "text": text}
+            if self._message_thread_id is not None:
+                payload["message_thread_id"] = self._message_thread_id
             response = self._client.post(
                 f"https://api.telegram.org/bot{self._token}/sendMessage",
-                json={"chat_id": self._chat_id, "text": text},
+                json=payload,
             )
         except httpx.HTTPError as error:
             raise TelegramDeliveryError("telegram transport failed") from error
