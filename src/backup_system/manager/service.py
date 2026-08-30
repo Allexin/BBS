@@ -130,7 +130,7 @@ async def _run_manager_loop(
 ) -> None:
     while application.accepting:
         executed = await application.run_iteration()
-        await application.publish("running" if executed else "idle")
+        await application.publish("running" if application.executor_active else "idle")
         if not executed:
             await asyncio.sleep(poll_seconds)
 

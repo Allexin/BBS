@@ -109,6 +109,10 @@ class ManagerApplication:
     def accepting(self) -> bool:
         return self._accepting
 
+    @property
+    def executor_active(self) -> bool:
+        return self._active_task is not None and not self._active_task.done()
+
     def initialize(self) -> None:
         now = utc_now()
         for job in self._config.jobs:

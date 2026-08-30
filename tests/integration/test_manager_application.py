@@ -205,6 +205,11 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
         assert await application.run_iteration()
         assert executor is not None
         await executor.started.wait()
+        assert application.executor_active
+        await application.publish("running")
+        assert '"manager_state":"running"' in (
+            layout.public / "health.json"
+        ).read_text(encoding="utf-8")
         cancel = CancelCurrentCommand(
             command_id=new_command_id(),
             created_at=datetime.now(UTC),
@@ -214,6 +219,7 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
         assert not await application.run_iteration()
         await asyncio.wait_for(executor.cancelled.wait(), timeout=1)
         await application.wait_executor()
+        assert not application.executor_active
         assert (layout.commands_completed / f"{cancel.command_id}.json").is_file()
 
     try:
