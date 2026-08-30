@@ -41,3 +41,12 @@ Do not proceed if the only passphrase copy is inside its encrypted repository.
 If repository inspection reports corruption, preserve the original medium and logs.
 Work on a clone where possible and choose repair manually; BBS must not silently turn
 a damaged repository into a new empty one.
+
+The repository/config independence of this procedure is covered by the disposable
+Stage 10 harness below. It creates encrypted test data only on D, deletes the generated
+host/runtime tree, performs a full repository read from independent recovery material,
+and verifies restored file hashes without manager SQLite:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage10\run_disaster_recovery_acceptance.ps1
+```

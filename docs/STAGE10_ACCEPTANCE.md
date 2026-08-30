@@ -18,13 +18,13 @@ production requirements.
 | --- | --- | --- | --- |
 | Manager, queue and executor integration | `tests/integration/test_manager_application.py` | Stage 9 corrective acceptance | Passed |
 | Accelerated weekly queue and cycle | `tests/integration/test_stage10_weekly_cycle.py` | Not required | Passed |
-| Snapshot backup/check/failure | Stage 7 integration tests | `poc/stage7` and Stage 0 fault probes | Passed previously; rerun pending |
-| Mirror backup/check/failure | Stage 6 tests | `poc/stage6` | Passed previously; rerun pending |
-| Snapshot and mirror restore | Stage 8 tests | `poc/stage8` | Passed previously; rerun pending |
-| Recover and interrupted-run safety | recovery and manager integration tests | Stage 9 service acceptance | Passed previously; rerun pending |
+| Snapshot backup/check/failure | Stage 7 integration tests | `poc/stage7` and Stage 0 fault probes | Passed |
+| Mirror backup/check/failure | Stage 6 tests | `poc/stage6` | Passed |
+| Snapshot and mirror restore | Stage 8 tests | `poc/stage8` | Passed |
+| Recover and interrupted-run safety | recovery and manager integration tests | Stage 9 service acceptance | Passed |
 | SMART and Web UI | SMART/projection/contract tests | `poc/stage10/run_smart_web_acceptance.ps1` | Passed during Stage 10 |
-| Clean-host recovery by runbook | Documentation review | Disposable clean environment | Pending |
-| Known limitations disposition | ADR and documentation review | Not required | Pending |
+| Clean-host recovery by runbook | Documentation review | `poc/stage10/run_disaster_recovery_acceptance.ps1` | Passed |
+| Known limitations disposition | `docs/adr/0001` and `docs/adr/0002` | Not required | Passed |
 
 The complete non-hardware suite currently passes with 369 tests and 8 explicitly
 skipped hardware tests. Ruff and strict mypy also pass. Rerun all guarded machine
@@ -37,6 +37,18 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage10\run_full_h
 The wrapper resolves D to a non-system physical disk before starting, prints progress
 for every reused acceptance harness, stops on the first failure, and writes both JSON
 and a transcript below `.poc-work\stage10`.
+
+## Current machine evidence
+
+The guarded hardware suite passed on 2026-08-31 using only disposable physical disk 2,
+drive D. Stage 9 additionally observed a 12.15-second cooperative cleanup, one start of
+the intentionally invalid service, and final `SERVICE_STOPPED` without a restart loop.
+
+The disaster-recovery harness then created a password-protected repository on D,
+removed its generated host/runtime tree, completed a full repository read, and restored
+two files (1056 logical bytes) with matching hashes. No manager SQLite or lost-host
+state was used. The expected scrub-cursor-reset warning was observed after the full
+read.
 
 ## Completion rule
 
