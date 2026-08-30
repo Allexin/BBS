@@ -4,8 +4,14 @@ Automated unit and integration coverage verifies bootstrap diagnostics, cooperat
 shutdown ordering, Job Object kill-on-close, release staging, and NSSM configuration
 read-back.
 
-The machine-level NSSM acceptance is pending. Ensure the approved `nssm.exe` is
-available through the elevated process `PATH`, then run elevated:
+Machine-level acceptance passed on NSSM 2.24 (64-bit):
+
+- cooperative stop waited 12.05 seconds for the fixture cleanup and did not hard-kill it;
+- manager config exit code `40` started exactly once and remained `SERVICE_STOPPED`;
+- temporary acceptance services were removed;
+- no backup disk was accessed.
+
+The reproducible command is:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\stage9\run_service_acceptance.ps1
