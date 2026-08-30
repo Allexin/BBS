@@ -144,14 +144,46 @@ Required correction:
 - record remaining limitations in an ADR if a normative requirement is intentionally
   deferred.
 
+## CA-06 — Pin snapshot `latest` before queueing restore
+
+**Severity:** blocking
+
+The restore contract requires manager to resolve `latest` to one concrete snapshot
+ID when it accepts the command. `CommandProcessor` exposes a resolver boundary, but
+the production manager has no repository resolver. The current corrective runtime
+therefore rejects `latest`; simply passing it to executor would select a potentially
+newer snapshot after the command has waited in the queue.
+
+This is important because restore must be deterministic and auditable. If a backup
+ahead of the restore creates a new snapshot, resolving at execution time restores a
+different version than the operator selected at command acceptance.
+
+Required correction:
+
+- resolve repository metadata through the privileged executor/disk lifecycle rather
+  than reading an offline repository directly from manager;
+- preserve FIFO ordering so resolution observes repository state at command
+  acceptance and cannot race a later backup;
+- validate that an explicit snapshot ID belongs to the requested job as part of the
+  same resolution step;
+- persist only the full resolved ID in the queued restore request;
+- isolate a resolver failure so it cannot block unrelated accepted commands.
+
+Acceptance evidence:
+
+- a queued backup after restore acceptance cannot change the restore snapshot ID;
+- a backup already ahead of restore has a deterministic, documented ordering;
+- unavailable repository and invalid snapshot ID reject/fail only that request;
+- restart preserves the pinned full snapshot ID.
+
 ## Recommended implementation order
 
 1. Manager composition and command-to-executor happy path.
 2. Executor failure/protocol handling and durable terminal state.
 3. Scheduler and cycle completion integration.
-4. Cooperative stop on the real runtime.
-5. Projection, deadlines, reports, notifications, and monitoring integration.
-6. Stable/data ACL enforcement and elevated acceptance.
-7. Repeat Stage 9 acceptance and update status.
-8. Begin Stage 10 only after all corrective evidence passes.
-
+4. Deterministic restore-version resolution.
+5. Cooperative stop on the real runtime.
+6. Projection, deadlines, reports, notifications, and monitoring integration.
+7. Stable/data ACL enforcement and elevated acceptance.
+8. Repeat Stage 9 acceptance and update status.
+9. Begin Stage 10 only after all corrective evidence passes.
