@@ -7,6 +7,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
+Write-Host "BBS non-admin update"
+Write-Host "Dev:    $repo"
+Write-Host "Stable: $Stable"
+Write-Host "Service: $Service"
 $python = Join-Path $repo '.venv\Scripts\python.exe'
 $nssm = (Get-Command nssm.exe -CommandType Application -ErrorAction Stop).Source
 $devUv = Join-Path $repo '.venv\Scripts\uv.exe'

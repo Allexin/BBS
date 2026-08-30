@@ -35,12 +35,14 @@ def build_parser() -> argparse.ArgumentParser:
 def update(
     *, source: Path, stable: Path, service: str, nssm: Path, uv: Path
 ) -> str:
+    print("[1/7] Validating Dev and Stable paths...", flush=True)
     source = source.resolve(strict=True)
     stable = stable.resolve(strict=True)
     if source == stable or source.is_relative_to(stable) or stable.is_relative_to(source):
         raise UpdateError("Dev and Stable trees must be separate")
     if not (stable / "backup-system.root").is_file():
         raise UpdateError("Stable root marker is missing")
+    print(f"[2/7] Checking that service {service!r} is stopped...", flush=True)
     status = _service_status(nssm, service)
     if status != SERVICE_STOPPED:
         raise UpdateError(
@@ -53,8 +55,10 @@ def update(
     revision = _git_revision(source)
     staging = source / ".poc-work" / f"stable-update-{uuid4()}"
     try:
+        print("[3/7] Staging files from the deployment manifest...", flush=True)
         manifest = load_deployment_manifest(source / "deployment-manifest.json")
         stage_release(source, staging, manifest)
+        print("[4/7] Building the frozen Stable virtual environment...", flush=True)
         _run_checked(
             [
                 str(uv),
@@ -65,18 +69,21 @@ def update(
                 str(staging / "app"),
             ],
             env={**os.environ, "UV_PROJECT_ENVIRONMENT": str(staging / ".venv")},
+            visible=True,
         )
-        for name, target in targets.items():
+        for index, (name, target) in enumerate(targets.items(), start=1):
+            print(f"[5/7] Replacing {name} ({index}/3)...", flush=True)
             prepared = staging / name
             if not prepared.is_dir():
                 raise UpdateError(f"prepared release is missing {name}")
             replace_tree_contents(prepared, target)
     finally:
         if staging.exists():
+            print("[6/7] Removing temporary staging files...", flush=True)
             shutil.rmtree(staging)
 
     print(
-        f"Stable application files replaced. Start service {service!r} manually; "
+        f"[7/7] Stable application files replaced. Start service {service!r} manually; "
         "waiting for SERVICE_RUNNING.",
         flush=True,
     )
@@ -114,13 +121,22 @@ def _git_revision(source: Path) -> str:
 
 
 def _run_checked(
-    argv: Sequence[str], *, env: dict[str, str] | None = None
+    argv: Sequence[str],
+    *,
+    env: dict[str, str] | None = None,
+    visible: bool = False,
 ) -> subprocess.CompletedProcess[str]:
     result = subprocess.run(
-        argv, check=False, capture_output=True, text=True, shell=False, env=env
+        argv,
+        check=False,
+        capture_output=not visible,
+        text=True,
+        shell=False,
+        env=env,
     )
     if result.returncode != 0:
-        raise UpdateError(f"command failed ({result.returncode}): {result.stderr.strip()}")
+        diagnostic = result.stderr.strip() if result.stderr else "see command output above"
+        raise UpdateError(f"command failed ({result.returncode}): {diagnostic}")
     return result
 
 
