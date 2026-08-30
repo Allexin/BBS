@@ -112,3 +112,16 @@ def test_regression_alert_is_durable_and_unchanged_value_does_not_duplicate(
         assert connection.execute("SELECT count(*) FROM notifications").fetchone() == (1,)
     finally:
         connection.close()
+
+
+def test_first_absolute_critical_condition_alerts_once(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    try:
+        repository = SmartHistoryRepository(connection, NotificationRepository(connection))
+        _record(repository, SmartMetrics(pending_sectors=4))
+        _record(repository, SmartMetrics(pending_sectors=4), offset=1)
+        assert connection.execute(
+            "SELECT kind FROM notifications ORDER BY created_at"
+        ).fetchall() == [("smart_critical_condition",)]
+    finally:
+        connection.close()

@@ -84,6 +84,13 @@ class SmartHistoryRepository:
         comparable = previous is not None and previous[0] == identity_key
         previous_metrics = previous[1] if previous is not None and comparable else None
         regressions, resets = self._compare(previous_metrics, metrics)
+        new_critical_conditions = (
+            _absolute_critical_conditions(metrics)
+            - _absolute_critical_conditions(previous_metrics)
+            if collection_success
+            else set()
+        )
+        new_critical_conditions.difference_update(item.rule_id for item in regressions)
         normalized = {
             "schema_version": 1,
             "collection_success": collection_success,
@@ -164,6 +171,17 @@ class SmartHistoryRepository:
                         },
                         created_at=observed_at,
                     )
+                for condition in sorted(new_critical_conditions):
+                    self._notifications.enqueue_in_transaction(
+                        deduplication_key=f"smart:{observation_id}:critical:{condition}",
+                        kind="smart_critical_condition",
+                        payload={
+                            "disk": public_disk_id,
+                            "indicator": condition,
+                            "severity": SmartSeverity.CRITICAL,
+                        },
+                        created_at=observed_at,
+                    )
         return SmartComparison(
             observation_id=observation_id,
             baseline_created=collection_success and not comparable,
@@ -224,3 +242,23 @@ class SmartHistoryRepository:
             else:
                 resets.append(field_name)
         return tuple(regressions), tuple(resets)
+
+
+def _absolute_critical_conditions(metrics: SmartMetrics | None) -> set[str]:
+    if metrics is None:
+        return set()
+    conditions: set[str] = set()
+    if metrics.overall_passed is False:
+        conditions.add("smart_overall_failed")
+    if metrics.nvme_critical_warning is True:
+        conditions.add("nvme_critical_warning")
+    for field in (
+        "pending_sectors",
+        "offline_uncorrectable",
+        "reported_uncorrectable",
+        "nvme_media_errors",
+    ):
+        value = getattr(metrics, field)
+        if value is not None and value > 0:
+            conditions.add(field)
+    return conditions

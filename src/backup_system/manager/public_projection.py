@@ -111,6 +111,8 @@ class PublicDisk(PublicModel):
     passive_smart_health: Literal["healthy", "warning", "critical", "unknown"]
     affects_system_health: bool = True
     health_policy_reason: str | None = None
+    stale: bool = False
+    health_reasons: tuple[str, ...] = ()
 
 
 class PublicVolume(PublicModel):

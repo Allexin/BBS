@@ -54,6 +54,7 @@ class ProjectionBuilder:
         job_deadlines: dict[str, str | None] | None = None,
         next_operations: dict[str, str] | None = None,
         disk_health_policies: dict[str, tuple[bool, str]] | None = None,
+        smart_stale_after_hours: int = 48,
         volume_stale_after_seconds: int = 120,
     ) -> None:
         self._connection = connection
@@ -61,6 +62,9 @@ class ProjectionBuilder:
         self._job_deadlines = job_deadlines or {}
         self._next_operations = next_operations or {}
         self._disk_health_policies = disk_health_policies or {}
+        if smart_stale_after_hours <= 0:
+            raise ValueError("SMART stale threshold must be positive")
+        self._smart_stale_after = timedelta(hours=smart_stale_after_hours)
         if volume_stale_after_seconds <= 0:
             raise ValueError("volume stale threshold must be positive")
         self._volume_stale_after = timedelta(seconds=volume_stale_after_seconds)
@@ -328,15 +332,26 @@ class ProjectionBuilder:
                 (str(row[0]), latest_identity),
             ).fetchone()
             operational = _operational(str(latest_row[1])) if latest_row else "unknown"
-            smart_health = _smart_health(str(latest_row[2])) if latest_row else "unknown"
+            observed_at = datetime.fromisoformat(str(latest_row[0])) if latest_row else None
+            stale = observed_at is None or now - observed_at > self._smart_stale_after
+            smart_health = (
+                "unknown"
+                if stale
+                else _smart_health(str(latest_row[2])) if latest_row else "unknown"
+            )
             effective_health = _effective_disk_health(
-                smart_health, str(test_row[0]) if test_row else None
+                smart_health, str(test_row[0]) if test_row else None, stale=stale
             )
             public_id = (
                 f"disk-{latest_identity[:12]}" if latest_identity else str(row[1])
             )
             affects_health, policy_reason = self._disk_health_policies.get(
                 public_id, (True, "")
+            )
+            health_reasons = _disk_health_reasons(
+                observations[0][1] if observations else {},
+                str(test_row[0]) if test_row else None,
+                stale=stale,
             )
             if affects_health and effective_health in {"warning", "critical"}:
                 issues.append(
@@ -363,7 +378,7 @@ class ProjectionBuilder:
                     operational_state=operational,
                     smart_health=effective_health,
                     passive_smart_health=smart_health,
-                    observed_at=datetime.fromisoformat(str(latest_row[0])) if latest_row else None,
+                    observed_at=observed_at,
                     metrics=metrics,
                     last_self_test=(
                         PublicSmartSelfTest(
@@ -379,8 +394,16 @@ class ProjectionBuilder:
                     mount_points=tuple(json.loads(str(row[8]))),
                     affects_system_health=affects_health,
                     health_policy_reason=policy_reason or None,
+                    stale=stale,
+                    health_reasons=health_reasons,
                 )
             )
+        disks.sort(
+            key=lambda disk: (
+                -_SEVERITY[disk.smart_health],
+                (disk.model or disk.disk_id).casefold(),
+            )
+        )
         return tuple(disks), tuple(issues)
 
     def _successful_observations(
@@ -523,15 +546,45 @@ def _smart_health(value: str) -> Literal["healthy", "warning", "critical", "unkn
 def _effective_disk_health(
     passive: Literal["healthy", "warning", "critical", "unknown"],
     self_test: str | None,
+    *,
+    stale: bool = False,
 ) -> Literal["healthy", "warning", "critical", "unknown"]:
     test_health: Literal["healthy", "warning", "critical"] = (
         "critical"
         if self_test == "failed"
         else "warning"
         if self_test in {"timeout", "unsupported"}
+        else "warning"
+        if stale
         else "healthy"
     )
     return max((passive, test_health), key=lambda value: _SEVERITY[value])
+
+
+def _disk_health_reasons(
+    metrics: dict[str, Any], self_test: str | None, *, stale: bool
+) -> tuple[str, ...]:
+    reasons: list[str] = []
+    if stale:
+        reasons.append("SMART observation is stale")
+    if self_test not in {None, "success"}:
+        reasons.append(f"Last self-test: {self_test}")
+    if metrics.get("overall_passed") is False:
+        reasons.append("SMART overall check failed")
+    if metrics.get("nvme_critical_warning") is True:
+        reasons.append("NVMe critical warning is active")
+    labels = (
+        ("pending_sectors", "pending sectors"),
+        ("offline_uncorrectable", "offline uncorrectable sectors"),
+        ("reported_uncorrectable", "reported uncorrectable errors"),
+        ("nvme_media_errors", "NVMe media errors"),
+        ("reallocated_sectors", "reallocated sectors"),
+    )
+    for field, label in labels:
+        value = metrics.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+            reasons.append(f"{value} {label}")
+    return tuple(reasons)
 
 
 def _overall_health(

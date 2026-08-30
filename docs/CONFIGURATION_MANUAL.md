@@ -175,7 +175,9 @@ example. Serial numbers and raw selectors are private configuration and are not
 published in the Web UI.
 
 `per_disk_timeout_seconds` bounds one passive smartctl query. `stale_after_hours`
-controls when an old observation is no longer considered current.
+controls when an old observation is no longer considered current. Once stale, the old
+metrics and timestamp remain visible, but passive health becomes `unknown` and the disk
+raises a system warning until a fresh observation arrives.
 
 ### 4.1 All-system SMART self-test job
 
@@ -210,6 +212,11 @@ target:
 SMART reads and self-tests do not change mount points or online/offline state. Public
 cards use irreversible IDs, manufacturer/model, capacity, bus type, and current user
 mount points. Serial, WWN, and raw device selector are not published.
+
+The Web UI sorts `critical`, then `warning`, `unknown`, and `healthy` disks. A card lists
+the exact health reasons above its metrics table. The first absolute critical condition
+(for example, non-zero pending sectors) creates an immediate notification even when it
+is the first baseline; an unchanged condition is not sent repeatedly.
 
 ## 5. Telegram
 

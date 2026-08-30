@@ -243,3 +243,27 @@ def test_projection_collapses_legacy_and_discovery_ids_by_identity(tmp_path: Pat
         assert status.disks[0].model == "Current model"
     finally:
         connection.close()
+
+
+def test_stale_smart_observation_is_visible_but_warns(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    now = datetime(2026, 8, 30, tzinfo=UTC)
+    try:
+        SmartHistoryRepository(connection).record(
+            disk_id="old-disk", public_disk_id="ignored", identity_key="d" * 64,
+            role="monitored", observed_at=now - timedelta(hours=49),
+            operational_state="unknown", smart_health="healthy",
+            metrics=SmartMetrics(overall_passed=True), model="Old disk",
+        )
+        status, _ = ProjectionBuilder(
+            connection, smart_stale_after_hours=48
+        ).build(
+            now=now, manager_started_at=now, manager_state="idle", version="test"
+        )
+        assert status.disks[0].stale
+        assert status.disks[0].passive_smart_health == "unknown"
+        assert status.disks[0].smart_health == "warning"
+        assert status.disks[0].health_reasons == ("SMART observation is stale",)
+        assert status.overall_health == "warning"
+    finally:
+        connection.close()

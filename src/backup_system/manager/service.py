@@ -10,7 +10,7 @@ from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 
-from backup_system.common.config import ManagerConfig
+from backup_system.common.config import ManagerConfig, SmartConfig
 from backup_system.common.config_io import validate_job_with_owner
 from backup_system.common.time import utc_now
 from backup_system.manager.application import ManagerApplication
@@ -62,7 +62,9 @@ class ServiceLifecycle:
             await self._publish_final_status()
 
 
-async def run_service(config_path: Path, config: ManagerConfig) -> None:
+async def run_service(
+    config_path: Path, config: ManagerConfig, smart_config: SmartConfig | None = None
+) -> None:
     root = config_path.resolve(strict=False).parents[2]
     layout = RuntimeLayout(root)
     initialize_data_layout(layout)
@@ -89,6 +91,7 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
                 for job in config.jobs
             },
             notification_dispatcher=notification_dispatcher,
+            smart_config=smart_config,
         )
         application.initialize()
         application.plan_startup_report(

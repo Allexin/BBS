@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from backup_system import __version__
-from backup_system.common.config import ManagerConfig
+from backup_system.common.config import ManagerConfig, SmartConfig
 from backup_system.common.events import KnownExecutorEvent, UnknownExecutorEvent
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.time import utc_now
@@ -70,6 +70,7 @@ class ManagerApplication:
         job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance", "smart-test"]]
         | None = None,
         notification_dispatcher: AsyncNotificationDispatcher | None = None,
+        smart_config: SmartConfig | None = None,
     ) -> None:
         self._layout = layout
         self._config = config
@@ -113,6 +114,9 @@ class ManagerApplication:
                 item.disk_id: (item.affects_system_health, item.reason)
                 for item in config.monitoring.smart.health_policies
             },
+            smart_stale_after_hours=(
+                smart_config.stale_after_hours if smart_config is not None else 48
+            ),
         )
         self._projection_publisher = ProjectionPublisher(layout.public)
 

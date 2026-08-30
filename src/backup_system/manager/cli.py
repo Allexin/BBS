@@ -23,7 +23,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
     config_path = Path(arguments.config)
     try:
-        manager_config, _ = validate_config_tree(config_path)
+        manager_config, smart_config = validate_config_tree(config_path)
     except ConfigLoadError as error:
         diagnostic = str(error)
         print(diagnostic, file=sys.stderr)
@@ -40,7 +40,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.validate_only:
         return ManagerExitCode.SUCCESS
     try:
-        asyncio.run(run_service(config_path, manager_config))
+        asyncio.run(run_service(config_path, manager_config, smart_config))
     except (OSError, RuntimeError, ValueError) as error:
         diagnostic = f"manager bootstrap failed: {error}"
         print(diagnostic, file=sys.stderr)
