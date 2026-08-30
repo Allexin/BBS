@@ -181,8 +181,7 @@ def test_manager_config_rejects_invalid_cycle_mode() -> None:
                 ],
                 "telegram": {
                     "enabled": False,
-                    "token_secret": "token-name",
-                    "chat_id_secret": "chat-name",
+                    "credentials_file": "telegram.json",
                     "daily_report_cron": "0 9 * * *",
                     "daily_report_timezone": "Europe/Samara",
                     "stale_manager_minutes": 10,

@@ -36,8 +36,7 @@ def _config() -> ManagerConfig:
             ],
             "telegram": {
                 "enabled": False,
-                "token_secret": "unused-token",
-                "chat_id_secret": "unused-chat",
+                "credentials_file": "telegram.json",
                 "daily_report_cron": "0 9 * * *",
                 "daily_report_timezone": "UTC",
                 "stale_manager_minutes": 10,

@@ -64,8 +64,7 @@ jobs:
       cycle: [{operation: prune}]
 telegram:
   enabled: false
-  token_secret: token-name
-  chat_id_secret: chat-name
+  credentials_file: telegram.json
   daily_report_cron: '0 9 * * *'
   daily_report_timezone: Europe/Samara
   stale_manager_minutes: 10

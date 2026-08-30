@@ -67,3 +67,9 @@ the actual stopped/failed service state visible. Correct the cause and deploy ag
 Never send job configs, passphrases, Telegram secrets, or private paths with a support
 bundle. Preserve failed restore directories containing `.restore-incomplete` until the
 failure has been investigated.
+
+Telegram credentials are stored in the configured JSON filename below
+`data\config` (normally `telegram.json`). The file remains readable to Administrators
+for backup and rotation, but deployment protects it from non-administrative access.
+Use `message_thread_id: null` for a normal chat or a positive topic ID for a forum
+topic. Never commit this file or include it in a support bundle.

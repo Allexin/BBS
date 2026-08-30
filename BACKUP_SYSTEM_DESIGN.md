@@ -374,7 +374,7 @@ encryption:
   passphrase: '<repository-passphrase>'
 ```
 
-Job-конфиг защищён ACL для Administrators и `LocalSystem` и не публикуется. Passphrase хранится переносимо прямо в этом конфиге, а не в DPAPI, чтобы копия конфига позволяла восстановление на другой машине. Telegram token остаётся отдельным manager secret и не относится к snapshot encryption.
+Job-конфиг защищён ACL для Administrators и `LocalSystem` и не публикуется. Passphrase хранится переносимо прямо в этом конфиге, а не в DPAPI, чтобы копия конфига позволяла восстановление на другой машине. Telegram credentials остаются отдельным ACL-защищённым manager JSON и не относятся к snapshot encryption.
 
 ## 8. Жизненный цикл backup-диска
 
@@ -1056,7 +1056,7 @@ backup или другая операция. Одновременно во вс�
 - Manager не передаёт секреты в status store.
 - Backup-диск offline вне окна работ.
 - Snapshot repository всегда использует внутренний криптографический формат restic, но password protection является опцией job.
-- Snapshot passphrase при наличии защищён ACL job-конфига и никогда не публикуется; Telegram secrets могут защищаться DPAPI отдельно.
+- Snapshot passphrase при наличии защищён ACL job-конфига и никогда не публикуется; Telegram credentials находятся в отдельном ACL-защищённом JSON.
 - Все subprocess запускаются без shell-интерпретации: Python `subprocess` получает список аргументов.
 - Пути и аргументы проходят строгую валидацию.
 - Stable root и весь `data` защищены утверждёнными ACL; отдельного privileged helper нет.
@@ -1223,7 +1223,7 @@ production-конфигов.
 | Наличие и содержимое backup | restic repository |
 | Текущий публичный статус | атомарные JSON-проекции |
 | Snapshot passphrase | защищённый ACL executor job config; отсутствует при `mode: none` |
-| Telegram secrets | manager secret storage/DPAPI |
+| Telegram credentials | отдельный ACL-защищённый manager JSON |
 
 SQLite и публичные JSON-файлы не используются для доказательства существования конкретного файла в backup.
 
@@ -1447,30 +1447,25 @@ jobs:
 
 telegram:
   enabled: true
-  token_secret: telegram-bot-token
-  chat_id_secret: telegram-chat-id
-  message_thread_id_secret: telegram-thread-id
+  credentials_file: telegram.json
   daily_report_cron: '0 9 * * *'  # только пример; значение выбирает оператор
   daily_report_timezone: Europe/Samara
   stale_manager_minutes: 10
 
 ```
 
-`token_secret`, `chat_id_secret` и `message_thread_id_secret` являются
-идентификаторами, а не значениями
-секретов. Каждый идентификатор соответствует файлу
-`Stable\data\config\secrets\<identifier>.dpapi`. Файл содержит только бинарный blob,
-созданный Windows DPAPI с machine scope, и находится под тем же защищённым ACL, что
-и `data\config`. Manager принимает только идентификатор формата job ID, не следует
-symlink/reparse point, ограничивает размер blob и расшифровывает его только в памяти
-процесса. Значение не записывается в SQLite, журналы, public projection, environment
-или command line. Независимая копия Telegram credentials хранится оператором вне
-Stable; DPAPI-файл сам по себе не переносим на другую машину.
-Если задан `message_thread_id_secret`, manager преобразует его значение в
-положительное целое и передаёт как `message_thread_id` во всех вызовах
-`sendMessage`; сообщения в общий чат группы в такой конфигурации не отправляются.
-Если поле отсутствует, `sendMessage` получает только `chat_id`, поэтому тот же
-transport работает с личным чатом, обычной группой или общим чатом forum-группы.
+`credentials_file` содержит только имя JSON-файла внутри `Stable\data\config`, без
+пути. Файл имеет строгую схему `bot_token`, `chat_id` и необязательный положительный
+`message_thread_id`, защищается ACL `Administrators/System` вместе с остальным
+`data\config` и остаётся обычным переносимым файлом, доступным оператору. Manager не
+следует symlink/reparse point, ограничивает размер файла и никогда не записывает его
+значения в SQLite, журналы, public projection, environment или command line.
+Независимая копия credentials хранится оператором вне Stable.
+
+Если `message_thread_id` задан, manager передаёт его во всех вызовах `sendMessage`;
+сообщения в общий чат группы в такой конфигурации не отправляются. Если поле равно
+`null`, `sendMessage` получает только `chat_id`, поэтому тот же transport работает с
+личным чатом, обычной группой или общим чатом forum-группы.
 
 Manager валидирует только эту схему. Для каждого enabled `job.id` он отдельно запускает `backup-executor validate --job <id>` и сохраняет результат проверки.
 
@@ -2896,7 +2891,7 @@ commit marker поколения.
 - PyYAML — YAML parsing через `safe_load`;
 - croniter — расчёт cron;
 - comtypes — явно описанные low-level Windows VSS COM interfaces;
-- pywin32 — DPAPI, Job Objects и Windows integration;
+- pywin32 — Job Objects, ACL и Windows integration;
 - httpx — Telegram HTTPS;
 - pytest, pytest-timeout — тесты;
 - Ruff — lint/format;
