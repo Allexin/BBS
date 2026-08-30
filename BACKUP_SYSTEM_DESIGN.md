@@ -1381,7 +1381,10 @@ Mount point backup-диска размещается отдельно, напр�
 Формат v1 — UTF-8 YAML без BOM. Загрузка выполняется `yaml.safe_load`, затем строгой Pydantic v2-моделью с `extra='forbid'`. Неизвестное поле является ошибкой. Относительные пути запрещены.
 
 Manager config читается и валидируется при startup; его hot reload отсутствует и для
-изменения расписания/уведомлений требуется service restart. Executor job configs не
+изменения расписания/уведомлений требуется один service restart. Конфиги заменяются
+атомарно при работающем service; превентивный stop перед редактированием не требуется.
+До restart manager продолжает использовать последнюю загруженную конфигурацию.
+Executor job configs не
 имеют generation/hash/change tracking. При startup manager безусловно вызывает
 `backup-executor validate` для всех configured jobs, чтобы показать исходные ошибки,
 но затем перед каждой фактической operation новый executor заново читает текущий
