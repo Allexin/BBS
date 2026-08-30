@@ -13,18 +13,73 @@ from backup_system.common.events import (
     Progress,
     RestoreCompleted,
     RestoreTargetReady,
+    RestoreVersionResolved,
     StageChanged,
 )
 from backup_system.common.time import utc_now
 from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.mirror_restore import MirrorRestore
 from backup_system.executor.mirror_win32 import WindowsMirrorFileOperations
+from backup_system.executor.restic_auth import restic_auth_arguments
 from backup_system.executor.restic_process import ResticProcess
 from backup_system.executor.restore_request import RestoreRequest, load_restore_request
 from backup_system.executor.restore_target import RestoreTargetError
 from backup_system.executor.runtime import build_windows_job
 from backup_system.executor.smart_preflight import SmartPreflightObservation
-from backup_system.executor.snapshot_restore import SnapshotRestore
+from backup_system.executor.snapshot_restore import SnapshotRestore, resolve_snapshot_version
+
+
+def run_restore_resolution_operation(
+    *,
+    runtime_root: Path,
+    config: SnapshotJobConfig | MirrorJobConfig,
+    smart_config: SmartConfig,
+    request_file: Path,
+    cancellation: CancellationToken,
+    smart_sink: Callable[[tuple[SmartPreflightObservation, ...]], None],
+    event_sink: Callable[[EventBase], None],
+) -> object:
+    if not request_file.is_absolute():
+        raise ValueError("restore request file must be absolute")
+    request = load_restore_request(request_file, expected_job_id=config.id)
+    windows_job = build_windows_job(
+        runtime_root=runtime_root,
+        cancellation=cancellation,
+        smart_sink=smart_sink,
+    )
+
+    def resolve() -> str:
+        if isinstance(config, MirrorJobConfig):
+            if request.version != "latest":
+                raise RestoreTargetError("mirror restore supports only version latest")
+            version = "latest"
+        else:
+            runner = ResticProcess(runtime_root / "bin" / "restic.exe", cancellation)
+            runner.verify_version()
+            with restic_auth_arguments(
+                config.repository.encryption,
+                runtime_root / "data" / "state" / "executor" / "secrets",
+            ) as auth:
+                version = resolve_snapshot_version(
+                    runner,
+                    ("--repo", config.repository.path, *auth),
+                    config,
+                    request.version,
+                )
+        event_sink(
+            RestoreVersionResolved(
+                event="restore_version_resolved",
+                timestamp=utc_now(),
+                version=version,
+            )
+        )
+        return version
+
+    return windows_job.run_destination(
+        config=config,
+        smart_config=smart_config,
+        adapter=lambda context: resolve(),
+    )
 
 
 def run_restore_operation(

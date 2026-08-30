@@ -106,6 +106,7 @@ Executor — короткоживущий CLI-процесс. Один запу�
 backup-executor run --run-id <uuid> --job <job-id>
 backup-executor check --run-id <uuid> --job <job-id> --mode <metadata|sample|full>
 backup-executor prune --run-id <uuid> --job <job-id>
+backup-executor resolve-restore --run-id <uuid> --job <job-id> --request-file <path>
 backup-executor restore --run-id <uuid> --job <job-id> --request-file <path>
 backup-executor restore-test --run-id <uuid> --job <job-id>
 backup-executor repair-mirror --run-id <uuid> --job <job-id>
@@ -991,10 +992,13 @@ backup repository, mirror root и `.backup-system`; это проверяет ex
 фактическим volume/path identities.
 
 Для snapshot `version` равен `latest` либо строго валидированному snapshot ID этого
-job repository. При приёме restore-запроса manager немедленно разрешает `latest` в
-конкретный snapshot ID и сохраняет ID в queued operation; появление более нового
-snapshot во время ожидания не меняет выбранную версию. Для mirror допустим только
-`latest`. Snapshot adapter использует
+job repository. При приёме restore-запроса manager ставит на его позицию внутреннюю
+`resolve-restore` operation. Executor через обычный disk lifecycle разрешает `latest`
+в полный snapshot ID либо проверяет принадлежность явно указанного ID этой job.
+Успешное завершение resolver и создание queued `restore` с полным ID выполняются
+одной транзакцией; restore наследует исходный `queued_at`, поэтому логическая работа
+не теряет позицию в manual FIFO. Появление более нового snapshot после resolver не
+меняет выбранную версию. Для mirror допустим только `latest`. Snapshot adapter использует
 штатный restic restore; mirror копирует требуемый final/subtree и сверяет каждый файл
 по catalog SHA-256. Любая ошибка чтения или hash mismatch даёт restore failure, но
 не удаляет уже восстановленные файлы: папка результата сохраняется с явным
@@ -2731,8 +2735,9 @@ CREATE TABLE backup_metrics (
 выполняются одной транзакцией; завершение run и переход operation
 `running → completed` также выполняются одной транзакцией.
 `operations.request_json` равен `NULL` для операций без дополнительных параметров;
-для restore он содержит только провалидированные `version`, `path` и `target` из
-типизированной spool-команды. Произвольные command arguments в это поле не попадают.
+для внутреннего `resolve-restore` он содержит типизированный исходный запрос, а для
+публичной queued `restore` — только полный разрешённый `version`, `path` и `target`.
+Произвольные command arguments в это поле не попадают.
 
 `operation` создаётся при принятии работы в очередь. `run` создаётся только при
 переходе operation в `running` и фактическом запуске executor; у operation со

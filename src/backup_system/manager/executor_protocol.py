@@ -39,6 +39,7 @@ class ExecutorInvocation:
             "check",
             "prune",
             "restore",
+            "resolve-restore",
             "restore-test",
             "repair-mirror",
             "recover",
@@ -60,12 +61,12 @@ class ExecutorInvocation:
             arguments.extend(("--mode", self.mode))
         elif self.mode is not None:
             raise ValueError("mode is valid only for check")
-        if self.operation == "restore":
+        if self.operation in {"restore", "resolve-restore"}:
             if self.request_file is None or not self.request_file.is_absolute():
-                raise ValueError("restore requires an absolute request file")
+                raise ValueError("restore operation requires an absolute request file")
             arguments.extend(("--request-file", str(self.request_file)))
         elif self.request_file is not None:
-            raise ValueError("request file is valid only for restore")
+            raise ValueError("request file is valid only for restore operations")
         return tuple(arguments)
 
 

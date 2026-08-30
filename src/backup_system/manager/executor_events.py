@@ -11,6 +11,7 @@ from backup_system.common.events import (
     Progress,
     RestoreCompleted,
     RestoreTargetReady,
+    RestoreVersionResolved,
     RunFinished,
     RunStarted,
     SmartObserved,
@@ -59,6 +60,7 @@ class ExecutorRunEventProcessor:
         self._offline_confirmed: bool | None = None
         self._snapshot_id: str | None = None
         self._bytes_added: int | None = None
+        self._resolved_restore_version: str | None = None
 
     def process(self, event: KnownExecutorEvent) -> SmartComparison | None:
         if isinstance(event, RunStarted):
@@ -81,6 +83,11 @@ class ExecutorRunEventProcessor:
         if isinstance(event, SnapshotCreated):
             self._snapshot_id = event.snapshot_id
             self._bytes_added = event.bytes_added
+            return None
+        if isinstance(event, RestoreVersionResolved):
+            if self._resolved_restore_version is not None:
+                raise ValueError("executor emitted multiple restore resolutions")
+            self._resolved_restore_version = event.version
             return None
         if isinstance(event, RestoreTargetReady):
             self._operations.set_restore_target(self._run_id, event.result_path)
@@ -120,12 +127,19 @@ class ExecutorRunEventProcessor:
             raise ValueError("executor terminal event conflicts with disk offline outcome")
         if event.result == "success" and not self._offline_confirmed:
             raise ValueError("successful executor result requires confirmed disk offline")
+        if event.result == "success" and self._resolved_restore_version is None:
+            row = self._operations.connection.execute(
+                "SELECT kind FROM runs WHERE run_id = ?", (str(self._run_id),)
+            ).fetchone()
+            if row is not None and str(row[0]) == "resolve-restore":
+                raise ValueError("successful resolver emitted no resolved version")
         self._operations.finish_run(
             self._run_id,
             result=RunResult(event.result),
             exit_code=event.exit_code,
             disk_offline_confirmed=self._offline_confirmed,
             snapshot_id=self._snapshot_id,
+            resolved_restore_version=self._resolved_restore_version,
             bytes_added=self._bytes_added,
             finished_at=event.timestamp,
         )

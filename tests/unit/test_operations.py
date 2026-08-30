@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,6 +54,119 @@ def test_enqueue_is_idempotent_and_coalesces_unfinished_work(tmp_path: Path) -> 
             EnqueueDisposition.COALESCED,
             OperationState.QUEUED,
         )
+    finally:
+        connection.close()
+
+
+def test_successful_restore_resolution_atomically_queues_pinned_restore(
+    tmp_path: Path,
+) -> None:
+    database = tmp_path / "manager.sqlite3"
+    repository, connection = _repository(database)
+    request = {
+        "schema_version": 1,
+        "request_id": str(uuid4()),
+        "job_id": "data",
+        "version": "latest",
+        "path": ".",
+        "target": r"D:\Restores",
+    }
+    try:
+        repository.enqueue(
+            deduplication_key="command:restore",
+            job_id="data",
+            kind="resolve-restore",
+            trigger_source="manual",
+            request=request,
+        )
+        run = repository.claim_next()
+        assert run is not None
+        repository.finish_run(
+            run.run_id,
+            result=RunResult.SUCCESS,
+            exit_code=0,
+            disk_offline_confirmed=True,
+            resolved_restore_version="a" * 64,
+        )
+    finally:
+        connection.close()
+
+    reopened = open_manager_database(database)
+    try:
+        row = reopened.execute(
+            "SELECT kind, request_json, state FROM operations WHERE kind = 'restore'"
+        ).fetchone()
+        assert row is not None
+        assert row[0] == "restore" and row[2] == "queued"
+        payload = json.loads(str(row[1]))
+        assert payload["version"] == "a" * 64
+        assert "latest" not in str(row[1])
+    finally:
+        reopened.close()
+
+
+def test_failed_restore_resolution_does_not_block_unrelated_work(tmp_path: Path) -> None:
+    repository, connection = _repository(tmp_path / "manager.sqlite3")
+    try:
+        repository.enqueue(
+            deduplication_key="command:restore",
+            job_id="data",
+            kind="resolve-restore",
+            trigger_source="manual",
+            request={"version": "latest"},
+        )
+        run = repository.claim_next()
+        assert run is not None
+        repository.finish_run(
+            run.run_id,
+            result=RunResult.FAILED,
+            exit_code=20,
+            disk_offline_confirmed=True,
+        )
+        assert connection.execute(
+            "SELECT COUNT(*) FROM operations WHERE kind = 'restore'"
+        ).fetchone() == (0,)
+        repository.enqueue(
+            deduplication_key="command:check",
+            job_id="data",
+            kind="check",
+            mode="metadata",
+            trigger_source="manual",
+        )
+        following = repository.claim_next()
+        assert following is not None and following.kind == "check"
+    finally:
+        connection.close()
+
+
+def test_backup_already_ahead_runs_before_restore_resolution(tmp_path: Path) -> None:
+    repository, connection = _repository(tmp_path / "manager.sqlite3")
+    try:
+        repository.enqueue(
+            deduplication_key="command:backup",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+            queued_at=datetime(2026, 1, 1, tzinfo=UTC),
+        )
+        repository.enqueue(
+            deduplication_key="command:restore",
+            job_id="data",
+            kind="resolve-restore",
+            trigger_source="manual",
+            request={"version": "latest"},
+            queued_at=datetime(2026, 1, 1, 0, 0, 1, tzinfo=UTC),
+        )
+        first = repository.claim_next()
+        assert first is not None and first.kind == "backup"
+        repository.finish_run(
+            first.run_id,
+            result=RunResult.SUCCESS,
+            exit_code=0,
+            disk_offline_confirmed=True,
+        )
+        second = repository.claim_next()
+        assert second is not None and second.kind == "resolve-restore"
     finally:
         connection.close()
 

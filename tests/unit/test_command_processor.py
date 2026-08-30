@@ -116,7 +116,7 @@ def test_remove_and_cancel_commands_dispatch_to_typed_handlers(tmp_path: Path) -
         connection.close()
 
 
-def test_restore_latest_is_resolved_before_enqueue(tmp_path: Path) -> None:
+def test_restore_is_queued_for_privileged_fifo_resolution(tmp_path: Path) -> None:
     layout, operations, connection = _runtime(tmp_path)
     try:
         command = RunCommand(
@@ -132,21 +132,18 @@ def test_restore_latest_is_resolved_before_enqueue(tmp_path: Path) -> None:
         publish_command(layout.root, command)
         spool = CommandSpool(layout)
         spool.accept_incoming()
-        CommandProcessor(
-            spool,
-            operations,
-            cancel_current=lambda: None,
-            resolve_restore_version=lambda job_id, version: "a" * 64,
-        ).process_accepted()
-        request = connection.execute("SELECT request_json FROM operations").fetchone()[0]
-        assert '"version":"' + "a" * 64 + '"' in request
+        CommandProcessor(spool, operations, cancel_current=lambda: None).process_accepted()
+        kind, request = connection.execute(
+            "SELECT kind, request_json FROM operations"
+        ).fetchone()
+        assert kind == "resolve-restore"
         assert '"request_id"' in request
-        assert '"version":"latest"' not in request
+        assert '"version":"latest"' in request
     finally:
         connection.close()
 
 
-def test_rejected_command_does_not_block_following_accepted_command(tmp_path: Path) -> None:
+def test_restore_resolution_does_not_block_following_accepted_command(tmp_path: Path) -> None:
     layout, operations, connection = _runtime(tmp_path)
     try:
         rejected = RunCommand(
@@ -171,21 +168,14 @@ def test_rejected_command_does_not_block_following_accepted_command(tmp_path: Pa
         spool = CommandSpool(layout)
         spool.accept_incoming()
 
-        def fail_resolver(job_id: str, version: str) -> str:
-            del job_id, version
-            raise RuntimeError("resolver unavailable")
-
         outcomes = CommandProcessor(
-            spool,
-            operations,
-            cancel_current=lambda: None,
-            resolve_restore_version=fail_resolver,
+            spool, operations, cancel_current=lambda: None
         ).process_accepted()
         assert [item.disposition for item in outcomes] == [
-            CommandDisposition.REJECTED,
+            CommandDisposition.ENQUEUED,
             CommandDisposition.ENQUEUED,
         ]
-        assert (layout.commands_rejected / f"{rejected.command_id}.json").is_file()
+        assert (layout.commands_completed / f"{rejected.command_id}.json").is_file()
         assert (layout.commands_completed / f"{accepted.command_id}.json").is_file()
     finally:
         connection.close()

@@ -148,6 +148,8 @@ Required correction:
 
 **Severity:** blocking
 
+**Status:** corrected; automated acceptance evidence recorded
+
 The restore contract requires manager to resolve `latest` to one concrete snapshot
 ID when it accepts the command. `CommandProcessor` exposes a resolver boundary, but
 the production manager has no repository resolver. The current corrective runtime
@@ -175,6 +177,17 @@ Acceptance evidence:
 - a backup already ahead of restore has a deterministic, documented ordering;
 - unavailable repository and invalid snapshot ID reject/fail only that request;
 - restart preserves the pinned full snapshot ID.
+
+Implemented evidence:
+
+- an internal `resolve-restore` executor operation uses the normal privileged disk
+  lifecycle and restic job filters;
+- resolver completion and creation of the public restore operation commit in one
+  SQLite transaction while retaining the original manual FIFO timestamp;
+- integration coverage proves that a later backup cannot change the pinned ID;
+- a backup already ahead retains its FIFO position and is therefore visible to the
+  subsequent resolver, while work accepted later cannot overtake the logical restore;
+- unit coverage proves persistence across database reopen and failure isolation.
 
 ## Recommended implementation order
 

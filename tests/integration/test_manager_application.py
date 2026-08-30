@@ -1,10 +1,16 @@
 import asyncio
-from datetime import UTC, datetime
+import json
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from backup_system.common.commands import CancelCurrentCommand, RunCommand, publish_command
 from backup_system.common.config import ManagerConfig
-from backup_system.common.events import DiskOfflineConfirmed, RunFinished, RunStarted
+from backup_system.common.events import (
+    DiskOfflineConfirmed,
+    RestoreVersionResolved,
+    RunFinished,
+    RunStarted,
+)
 from backup_system.common.ids import new_command_id
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
@@ -104,6 +110,111 @@ class _CancellableExecutor:
     async def cancel_current(self) -> bool:
         self.cancelled.set()
         return True
+
+
+class _ResolvingExecutor:
+    def __init__(self, on_event: object, observed: list[tuple[str, str | None]]) -> None:
+        self._on_event = on_event
+        self._observed = observed
+
+    async def run(self, invocation: object) -> ExecutorProcessResult:
+        version = None
+        if invocation.request_file is not None:
+            version = json.loads(
+                invocation.request_file.read_text(encoding="utf-8")
+            )["version"]
+        self._observed.append((invocation.operation, version))
+        now = datetime.now(UTC)
+        callback = self._on_event
+        callback(
+            RunStarted(
+                event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data"
+            )
+        )
+        if invocation.operation == "resolve-restore":
+            callback(
+                RestoreVersionResolved(
+                    event="restore_version_resolved",
+                    timestamp=now,
+                    version="a" * 64,
+                )
+            )
+        callback(DiskOfflineConfirmed(event="disk_offline_confirmed", timestamp=now))
+        terminal = RunFinished(
+            event="run_finished",
+            timestamp=now,
+            result="success",
+            exit_code=0,
+            disk_offline_confirmed=True,
+        )
+        callback(terminal)
+        return ExecutorProcessResult(0, terminal)
+
+    async def cancel_current(self) -> bool:
+        return True
+
+
+def test_restore_latest_is_pinned_before_a_later_backup_runs(tmp_path: Path) -> None:
+    root = tmp_path / "Dev"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    operations = OperationsRepository(connection)
+    config = _config()
+    operations.upsert_job(
+        job_id="data", display_name="Data", enabled=True, config_valid=True
+    )
+    observed: list[tuple[str, str | None]] = []
+    application = ManagerApplication(
+        layout=layout,
+        config=config,
+        operations=operations,
+        executor_factory=lambda on_event, on_stderr: _ResolvingExecutor(
+            on_event, observed
+        ),
+    )
+    application.initialize()
+    accepted_at = datetime.now(UTC)
+    restore = RunCommand(
+        command_id=new_command_id(),
+        created_at=accepted_at,
+        kind="run",
+        job_id="data",
+        operation="restore",
+        version="latest",
+        path=".",
+        target=r"D:\Restores",
+    )
+    backup = RunCommand(
+        command_id=new_command_id(),
+        created_at=accepted_at + timedelta(milliseconds=1),
+        kind="run",
+        job_id="data",
+        operation="backup",
+    )
+    publish_command(root, restore)
+    publish_command(root, backup)
+
+    async def scenario() -> None:
+        for _ in range(3):
+            await application.run_iteration()
+            await application.wait_executor()
+
+    try:
+        asyncio.run(scenario())
+        assert observed == [
+            ("resolve-restore", "latest"),
+            ("restore", "a" * 64),
+            ("run", None),
+        ]
+        request = connection.execute(
+            "SELECT request_json FROM operations WHERE kind = 'restore'"
+        ).fetchone()[0]
+        assert json.loads(request)["version"] == "a" * 64
+    finally:
+        connection.close()
 
 
 def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path) -> None:

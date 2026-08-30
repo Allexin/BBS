@@ -42,12 +42,10 @@ class CommandProcessor:
         operations: OperationsRepository,
         *,
         cancel_current: Callable[[], None],
-        resolve_restore_version: Callable[[str, str], str] | None = None,
     ) -> None:
         self._spool = spool
         self._operations = operations
         self._cancel_current = cancel_current
-        self._resolve_restore_version = resolve_restore_version
 
     def process_accepted(self) -> tuple[ProcessedCommand, ...]:
         processed: list[ProcessedCommand] = []
@@ -73,23 +71,18 @@ class CommandProcessor:
                 assert command.version is not None
                 assert command.path is not None
                 assert command.target is not None
-                if self._resolve_restore_version is None:
-                    raise RuntimeError("restore version resolver is not configured")
-                resolved_version = self._resolve_restore_version(
-                    command.job_id, command.version
-                )
                 request = {
                     "schema_version": 1,
                     "request_id": str(command.command_id),
                     "job_id": command.job_id,
-                    "version": resolved_version,
+                    "version": command.version,
                     "path": command.path,
                     "target": command.target,
                 }
             enqueue_result = self._operations.enqueue(
                 deduplication_key=f"command:{command.command_id}",
                 job_id=command.job_id,
-                kind=command.operation,
+                kind="resolve-restore" if command.operation == "restore" else command.operation,
                 mode=command.mode,
                 request=request,
                 trigger_source="manual",

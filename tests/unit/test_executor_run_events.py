@@ -9,6 +9,7 @@ from backup_system.common.events import (
     Progress,
     RestoreCompleted,
     RestoreTargetReady,
+    RestoreVersionResolved,
     RunFinished,
     RunStarted,
     SnapshotCreated,
@@ -97,6 +98,50 @@ def test_terminal_without_prior_offline_event_is_rejected(tmp_path: Path) -> Non
                     disk_offline_confirmed=False,
                 )
             )
+    finally:
+        connection.close()
+
+
+def test_resolver_event_pins_restore_before_success_is_committed(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    operations = OperationsRepository(connection)
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+    operations.enqueue(
+        deduplication_key="manual:resolve",
+        job_id="data",
+        kind="resolve-restore",
+        trigger_source="manual",
+        request={"version": "latest"},
+    )
+    run = operations.claim_next()
+    assert run is not None
+    processor = ExecutorRunEventProcessor(
+        run_id=run.run_id,
+        job_id=run.job_id,
+        operations=operations,
+        smart=ExecutorEventIngestor(SmartHistoryRepository(connection)),
+    )
+    now = datetime.now(UTC)
+    try:
+        processor.process(
+            RestoreVersionResolved(
+                event="restore_version_resolved", timestamp=now, version="b" * 64
+            )
+        )
+        processor.process(DiskOfflineConfirmed(event="disk_offline_confirmed", timestamp=now))
+        processor.process(
+            RunFinished(
+                event="run_finished",
+                timestamp=now,
+                result="success",
+                exit_code=0,
+                disk_offline_confirmed=True,
+            )
+        )
+        assert connection.execute(
+            "SELECT json_extract(request_json, '$.version') FROM operations "
+            "WHERE kind = 'restore'"
+        ).fetchone() == ("b" * 64,)
     finally:
         connection.close()
 

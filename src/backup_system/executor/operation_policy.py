@@ -15,9 +15,19 @@ class OperationNotAllowedError(ValueError):
 
 
 _ALLOWED: dict[type[object], frozenset[str]] = {
-    SnapshotJobConfig: frozenset({"run", "check", "restore", "restore-test", "recover"}),
+    SnapshotJobConfig: frozenset(
+        {"run", "check", "resolve-restore", "restore", "restore-test", "recover"}
+    ),
     MirrorJobConfig: frozenset(
-        {"run", "check", "restore", "restore-test", "repair-mirror", "recover"}
+        {
+            "run",
+            "check",
+            "resolve-restore",
+            "restore",
+            "restore-test",
+            "repair-mirror",
+            "recover",
+        }
     ),
     MaintenanceJobConfig: frozenset({"prune", "recover"}),
 }

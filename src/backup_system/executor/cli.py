@@ -38,6 +38,7 @@ from backup_system.executor.operation_policy import (
 from backup_system.executor.reporting import ExecutorRunReporter, JsonLineEventSink
 from backup_system.executor.restore_runtime import (
     run_restore_operation,
+    run_restore_resolution_operation,
     run_restore_test_operation,
 )
 from backup_system.executor.runtime import run_recovery
@@ -57,10 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
     check.add_argument("--run-id", required=True, type=parse_uuid4)
     check.add_argument("--job", required=True, type=validate_job_id)
     check.add_argument("--mode", choices=("metadata", "subset", "full"), required=True)
-    restore = subparsers.add_parser("restore")
-    restore.add_argument("--run-id", required=True, type=parse_uuid4)
-    restore.add_argument("--job", required=True, type=validate_job_id)
-    restore.add_argument("--request-file", required=True)
+    for command in ("resolve-restore", "restore"):
+        restore = subparsers.add_parser(command)
+        restore.add_argument("--run-id", required=True, type=parse_uuid4)
+        restore.add_argument("--job", required=True, type=validate_job_id)
+        restore.add_argument("--request-file", required=True)
     validate = subparsers.add_parser("validate")
     validate.add_argument("--job", required=True, type=validate_job_id)
     subparsers.add_parser("validate-smart-config")
@@ -114,6 +116,26 @@ def main(argv: Sequence[str] | None = None) -> int:
                 mode=getattr(arguments, "mode", None),
                 cancellation=token,
                 smart_sink=smart_sink,
+            ),
+            input_stream=sys.stdin.buffer,
+            output_stream=sys.stdout,
+        )
+    if (
+        isinstance(config, (SnapshotJobConfig, MirrorJobConfig))
+        and arguments.command == "resolve-restore"
+    ):
+        smart_config = load_smart_config(config_dir / "smart.yaml")
+        return _execute_operation(
+            run_id=arguments.run_id,
+            job_id=arguments.job,
+            operation=lambda token, smart_sink, event_sink: run_restore_resolution_operation(
+                runtime_root=root,
+                config=config,
+                smart_config=smart_config,
+                request_file=Path(arguments.request_file),
+                cancellation=token,
+                smart_sink=smart_sink,
+                event_sink=event_sink,
             ),
             input_stream=sys.stdin.buffer,
             output_stream=sys.stdout,

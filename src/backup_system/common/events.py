@@ -46,6 +46,11 @@ class SnapshotCreated(EventBase):
     bytes_added: int = Field(ge=0)
 
 
+class RestoreVersionResolved(EventBase):
+    event: Literal["restore_version_resolved"]
+    version: str = Field(pattern=r"^(?:latest|[0-9a-f]{64})$")
+
+
 class RestoreTargetReady(EventBase):
     event: Literal["restore_target_ready"]
     result_path: str
@@ -88,6 +93,7 @@ KnownExecutorEvent = Annotated[
     | StageChanged
     | Progress
     | SnapshotCreated
+    | RestoreVersionResolved
     | RestoreTargetReady
     | RestoreCompleted
     | DiskOfflineConfirmed
@@ -115,6 +121,7 @@ def parse_executor_event(value: dict[str, Any]) -> KnownExecutorEvent | UnknownE
         "stage_changed",
         "progress",
         "snapshot_created",
+        "restore_version_resolved",
         "restore_target_ready",
         "restore_completed",
         "disk_offline_confirmed",

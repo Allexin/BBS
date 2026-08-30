@@ -67,7 +67,7 @@ class SnapshotRestore:
         staging.mkdir()
         with self._auth_factory(config.repository.encryption, self._secret_directory) as auth:
             base = ("--repo", config.repository.path, *auth)
-            snapshot_id = self._resolve_snapshot(base, config, request.version)
+            snapshot_id = resolve_snapshot_version(self._runner, base, config, request.version)
             self._stage_sink("restoring")
             self._runner.run(
                 [
@@ -99,39 +99,39 @@ class SnapshotRestore:
         self._stage_sink("verifying")
         return target.verify_and_complete(result, manifest)
 
-    def _resolve_snapshot(
-        self,
-        base: Sequence[str],
-        config: SnapshotJobConfig,
-        requested: str,
-    ) -> str:
-        result = self._runner.run(
-            [
-                *base,
-                "snapshots",
-                "--json",
-                "--host",
-                config.backup.host,
-                "--tag",
-                f"job:{config.id}",
-            ]
-        )
-        snapshots = tuple(result.events)
-        if not snapshots:
-            raise RestoreTargetError("snapshot repository has no matching snapshots")
-        if requested == "latest":
-            latest = max(snapshots, key=lambda item: str(item.get("time", "")))
-            return _full_snapshot_id(latest)
-        if _SNAPSHOT_ID.fullmatch(requested) is None:
-            raise RestoreTargetError("snapshot ID has invalid syntax")
-        matches = [
-            item
-            for item in snapshots
-            if requested in {item.get("id"), item.get("short_id")}
+
+
+def resolve_snapshot_version(
+    runner: ResticRunner,
+    base: Sequence[str],
+    config: SnapshotJobConfig,
+    requested: str,
+) -> str:
+    result = runner.run(
+        [
+            *base,
+            "snapshots",
+            "--json",
+            "--host",
+            config.backup.host,
+            "--tag",
+            f"job:{config.id}",
         ]
-        if len(matches) != 1:
-            raise RestoreTargetError("snapshot ID does not uniquely belong to this job")
-        return _full_snapshot_id(matches[0])
+    )
+    snapshots = tuple(result.events)
+    if not snapshots:
+        raise RestoreTargetError("snapshot repository has no matching snapshots")
+    if requested == "latest":
+        latest = max(snapshots, key=lambda item: str(item.get("time", "")))
+        return _full_snapshot_id(latest)
+    if _SNAPSHOT_ID.fullmatch(requested) is None:
+        raise RestoreTargetError("snapshot ID has invalid syntax")
+    matches = [
+        item for item in snapshots if requested in {item.get("id"), item.get("short_id")}
+    ]
+    if len(matches) != 1:
+        raise RestoreTargetError("snapshot ID does not uniquely belong to this job")
+    return _full_snapshot_id(matches[0])
 
 
 def _full_snapshot_id(snapshot: Mapping[str, Any]) -> str:

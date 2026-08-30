@@ -413,6 +413,7 @@ class OperationsRepository:
         exit_code: int,
         disk_offline_confirmed: bool,
         snapshot_id: str | None = None,
+        resolved_restore_version: str | None = None,
         bytes_added: int | None = None,
         finished_at: datetime | None = None,
     ) -> None:
@@ -423,7 +424,8 @@ class OperationsRepository:
             row = self._connection.execute(
                 """SELECT runs.operation_id, runs.deadline_at, runs.deadline_exceeded_at,
                     runs.job_id, operations.kind, operations.trigger_source,
-                    operations.request_json, runs.restore_result_path, runs.stage
+                    operations.request_json, runs.restore_result_path, runs.stage,
+                    operations.queued_at
                 FROM runs JOIN operations ON operations.operation_id = runs.operation_id
                 WHERE runs.run_id = ? AND runs.state = ?""",
                 (str(run_id), RunState.RUNNING),
@@ -431,6 +433,16 @@ class OperationsRepository:
             if row is None:
                 raise StateTransitionError("only a running run can be finished")
             operation_id = str(row[0])
+            operation_kind = str(row[4])
+            if resolved_restore_version is not None:
+                if operation_kind != "resolve-restore" or result is not RunResult.SUCCESS:
+                    raise StateTransitionError(
+                        "restore resolution belongs only to a successful resolver run"
+                    )
+                request = json.loads(str(row[6])) if row[6] is not None else None
+                if not isinstance(request, dict):
+                    raise StateTransitionError("restore resolver has no request")
+                request["version"] = resolved_restore_version
             deadline_at = datetime.fromisoformat(str(row[1])) if row[1] is not None else None
             completed_time = datetime.fromisoformat(timestamp)
             overrun_seconds = (
@@ -470,6 +482,15 @@ class OperationsRepository:
             )
             if cursor.rowcount != 1:
                 raise StateTransitionError("run operation is not running")
+            if resolved_restore_version is not None:
+                self.enqueue_in_transaction(
+                    deduplication_key=f"resolved:{operation_id}",
+                    job_id=str(row[3]),
+                    kind="restore",
+                    trigger_source="manual",
+                    request=request,
+                    queued_at=datetime.fromisoformat(str(row[9])),
+                )
             self._insert_event(
                 run_id,
                 timestamp,
@@ -501,7 +522,7 @@ class OperationsRepository:
                         "result": result,
                         "exit_code": exit_code,
                     }
-                    if str(row[4]) in {"restore", "restore-test"}:
+                    if operation_kind in {"resolve-restore", "restore", "restore-test"}:
                         request = json.loads(str(row[6])) if row[6] is not None else {}
                         payload.update(
                             version=request.get("version"),

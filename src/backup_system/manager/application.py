@@ -87,7 +87,6 @@ class ManagerApplication:
             self._spool,
             operations,
             cancel_current=self.request_executor_cancel,
-            resolve_restore_version=self._resolve_restore_version,
         )
         self._schedules = ScheduleStore(
             connection,
@@ -230,7 +229,7 @@ class ManagerApplication:
         self._active_executor = executor
         request_file: Path | None = None
         try:
-            if claimed.kind == "restore":
+            if claimed.kind in {"resolve-restore", "restore"}:
                 request_file = self._write_restore_request(claimed)
             invocation = ExecutorInvocation(
                 python_executable=Path(sys.executable).resolve(),
@@ -284,7 +283,7 @@ class ManagerApplication:
         self, claimed: ClaimedRun, result: ExecutorProcessResult
     ) -> None:
         job = next((item for item in self._config.jobs if item.id == claimed.job_id), None)
-        if job is None:
+        if job is None or claimed.kind == "resolve-restore":
             return
         self._schedules.record_completion(
             claimed.job_id,
@@ -312,14 +311,6 @@ class ManagerApplication:
             self._write_executor_diagnostic(
                 f"notification dispatcher failed: {type(error).__name__}\n".encode("ascii")
             )
-
-    @staticmethod
-    def _resolve_restore_version(job_id: str, version: str) -> str:
-        del job_id
-        if version == "latest":
-            raise ValueError("latest restore version requires repository resolution")
-        return version
-
 
 def _executor_operation(kind: str) -> str:
     return "run" if kind == "backup" else kind
