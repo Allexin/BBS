@@ -54,13 +54,24 @@ def configure_service(
     runner = run or _run
     python = root / ".venv" / "Scripts" / "python.exe"
     config = root / "data" / "config" / "manager.yaml"
-    _checked(
-        runner,
-        [
-            str(nssm), "install", service_name, str(python), "-m",
-            "backup_system.manager", "--config", str(config),
-        ],
-    )
+    status = runner([str(nssm), "status", service_name])
+    if status.returncode == 0:
+        _checked(runner, [str(nssm), "set", service_name, "Application", str(python)])
+        _checked(
+            runner,
+            [
+                str(nssm), "set", service_name, "AppParameters", "-m",
+                "backup_system.manager", "--config", str(config),
+            ],
+        )
+    else:
+        _checked(
+            runner,
+            [
+                str(nssm), "install", service_name, str(python), "-m",
+                "backup_system.manager", "--config", str(config),
+            ],
+        )
     for setting in service_settings(root):
         command = [str(nssm), "set", service_name, setting.name]
         if setting.subparameter is not None:

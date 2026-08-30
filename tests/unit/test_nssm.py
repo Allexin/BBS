@@ -40,13 +40,15 @@ class _Nssm:
             subparameter = command[4] if len(command) == 5 else None
             value = self.values[(command[3], subparameter)]
             return subprocess.CompletedProcess(command, 0, value + "\n", "")
+        if command[1] == "status":
+            return subprocess.CompletedProcess(command, 1, "", "missing")
         return subprocess.CompletedProcess(command, 0, "", "")
 
 
 def test_configuration_uses_argv_and_verifies_every_setting(tmp_path: Path) -> None:
     fake = _Nssm()
     configure_service(nssm=tmp_path / "nssm.exe", service_name="BBS", root=tmp_path, run=fake)
-    install = fake.commands[0]
+    install = fake.commands[1]
     assert install[1:4] == ["install", "BBS", str(tmp_path / ".venv/Scripts/python.exe")]
     assert sum(command[1] == "get" for command in fake.commands) == len(service_settings(tmp_path))
 
@@ -64,3 +66,19 @@ def test_readback_mismatch_blocks_configuration(tmp_path: Path) -> None:
         configure_service(
             nssm=tmp_path / "nssm.exe", service_name="BBS", root=tmp_path, run=corrupt
         )
+
+
+def test_existing_service_is_updated_without_reinstall(tmp_path: Path) -> None:
+    fake = _Nssm()
+
+    def existing(argv: Sequence[str]) -> subprocess.CompletedProcess[str]:
+        if list(argv)[1] == "status":
+            return subprocess.CompletedProcess(list(argv), 0, "SERVICE_STOPPED\n", "")
+        return fake(argv)
+
+    configure_service(
+        nssm=tmp_path / "nssm.exe", service_name="BBS", root=tmp_path, run=existing
+    )
+    assert not any(command[1] == "install" for command in fake.commands)
+    assert any(command[1:4] == ["set", "BBS", "Application"] for command in fake.commands)
+    assert any(command[1:4] == ["set", "BBS", "AppParameters"] for command in fake.commands)
