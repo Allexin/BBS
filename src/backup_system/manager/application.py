@@ -32,6 +32,7 @@ from backup_system.manager.scheduler_events import SchedulerEventRepository
 from backup_system.manager.smart_history import SmartHistoryRepository
 from backup_system.manager.spool import CommandSpool
 from backup_system.manager.startup_reports import StartupReportPlanner
+from backup_system.manager.telegram import AsyncNotificationDispatcher
 
 
 class ExecutorTransport(Protocol):
@@ -67,11 +68,13 @@ class ManagerApplication:
         operations: OperationsRepository,
         executor_factory: ExecutorFactory = _default_executor_factory,
         job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance"]] | None = None,
+        notification_dispatcher: AsyncNotificationDispatcher | None = None,
     ) -> None:
         self._layout = layout
         self._config = config
         self._operations = operations
         self._executor_factory = executor_factory
+        self._notification_dispatcher = notification_dispatcher
         self._accepting = True
         self._active_executor: ExecutorTransport | None = None
         self._active_task: asyncio.Task[None] | None = None
@@ -191,6 +194,7 @@ class ManagerApplication:
                 now=now,
                 poll_seconds=self._config.scheduler.poll_seconds,
             )
+            await self._dispatch_notification(now)
         if not self._accepting:
             return False
         if self._active_task is not None:
@@ -297,6 +301,17 @@ class ManagerApplication:
         with path.open("ab") as stream:
             stream.write(chunk)
             stream.flush()
+
+    async def _dispatch_notification(self, now: datetime) -> None:
+        dispatcher = self._notification_dispatcher
+        if dispatcher is None:
+            return
+        try:
+            await dispatcher.dispatch_one(now=now)
+        except Exception as error:
+            self._write_executor_diagnostic(
+                f"notification dispatcher failed: {type(error).__name__}\n".encode("ascii")
+            )
 
     @staticmethod
     def _resolve_restore_version(job_id: str, version: str) -> str:

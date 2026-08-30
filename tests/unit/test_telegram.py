@@ -1,11 +1,14 @@
+import asyncio
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import httpx
 
+from backup_system.manager import telegram
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.telegram import (
+    AsyncNotificationDispatcher,
     DispatchResult,
     NotificationDispatcher,
     TelegramSender,
@@ -42,6 +45,31 @@ def test_sender_can_target_forum_topic() -> None:
         message_thread_id=42,
         client=httpx.Client(transport=httpx.MockTransport(handle)),
     ).send("hello")
+
+
+def test_async_dispatcher_moves_blocking_work_off_event_loop(
+    monkeypatch, tmp_path: Path
+) -> None:
+    observed: list[tuple[object, ...]] = []
+
+    def dispatch(*values: object) -> DispatchResult:
+        observed.append(values)
+        return DispatchResult.IDLE
+
+    monkeypatch.setattr(telegram, "_dispatch_pending", dispatch)
+    now = datetime.now(UTC)
+    result = asyncio.run(
+        AsyncNotificationDispatcher(
+            tmp_path / "manager.sqlite3",
+            token="test-token",
+            chat_id="test-chat",
+            message_thread_id=42,
+        ).dispatch_one(now=now)
+    )
+    assert result is DispatchResult.IDLE
+    assert observed == [
+        (tmp_path / "manager.sqlite3", "test-token", "test-chat", 42, now)
+    ]
 
 
 def test_dispatcher_marks_successful_notification_sent(tmp_path: Path) -> None:

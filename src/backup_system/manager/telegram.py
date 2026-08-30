@@ -2,12 +2,16 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Callable
 from datetime import datetime
 from enum import StrEnum
+from pathlib import Path
 
 import httpx
 
+from backup_system.manager.database import open_manager_database
+from backup_system.manager.notification_format import render_notification
 from backup_system.manager.notifications import NotificationRepository, PendingNotification
 
 
@@ -84,3 +88,53 @@ class NotificationDispatcher:
             return DispatchResult.RETRY_SCHEDULED
         self._repository.record_sent(notification.notification_id, sent_at=now)
         return DispatchResult.SENT
+
+
+class AsyncNotificationDispatcher:
+    """Dispatch from a worker thread with its own SQLite connection."""
+
+    def __init__(
+        self,
+        database: Path,
+        *,
+        token: str,
+        chat_id: str,
+        message_thread_id: int | None,
+    ) -> None:
+        self._database = database
+        self._token = token
+        self._chat_id = chat_id
+        self._message_thread_id = message_thread_id
+
+    async def dispatch_one(self, *, now: datetime) -> DispatchResult:
+        return await asyncio.to_thread(
+            _dispatch_pending,
+            self._database,
+            self._token,
+            self._chat_id,
+            self._message_thread_id,
+            now,
+        )
+
+
+def _dispatch_pending(
+    database: Path,
+    token: str,
+    chat_id: str,
+    message_thread_id: int | None,
+    now: datetime,
+) -> DispatchResult:
+    connection = open_manager_database(database)
+    try:
+        with httpx.Client(timeout=10) as client:
+            sender = TelegramSender(
+                token=token,
+                chat_id=chat_id,
+                message_thread_id=message_thread_id,
+                client=client,
+            )
+            return NotificationDispatcher(
+                NotificationRepository(connection), sender, render_notification
+            ).dispatch_one(now=now)
+    finally:
+        connection.close()

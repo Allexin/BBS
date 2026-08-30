@@ -19,6 +19,8 @@ from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
 from backup_system.manager.public_projection import HealthProjection
+from backup_system.manager.secrets import load_manager_secret
+from backup_system.manager.telegram import AsyncNotificationDispatcher
 
 AsyncCallback = Callable[[], Awaitable[None]]
 
@@ -77,6 +79,7 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
         previous_seen_at = _previous_manager_seen(layout, fallback=utc_now())
         reconciliation = operations.reconcile_startup()
 
+        notification_dispatcher = _notification_dispatcher(layout, config)
         application = ManagerApplication(
             layout=layout,
             config=config,
@@ -85,6 +88,7 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
                 job.id: validate_job_with_owner(layout.config, job.id).kind
                 for job in config.jobs
             },
+            notification_dispatcher=notification_dispatcher,
         )
         application.initialize()
         application.plan_startup_report(
@@ -152,3 +156,27 @@ def _previous_manager_seen(layout: RuntimeLayout, *, fallback: datetime) -> date
     except (OSError, ValueError, json.JSONDecodeError):
         return fallback
     return value.generated_at
+
+
+def _notification_dispatcher(
+    layout: RuntimeLayout, config: ManagerConfig
+) -> AsyncNotificationDispatcher | None:
+    telegram = config.telegram
+    if not telegram.enabled:
+        return None
+    directory = layout.config / "secrets"
+    thread_id = None
+    if telegram.message_thread_id_secret is not None:
+        value = load_manager_secret(directory, telegram.message_thread_id_secret)
+        try:
+            thread_id = int(value)
+        except ValueError as error:
+            raise ValueError("Telegram message thread ID secret is not an integer") from error
+        if thread_id <= 0:
+            raise ValueError("Telegram message thread ID secret must be positive")
+    return AsyncNotificationDispatcher(
+        layout.database,
+        token=load_manager_secret(directory, telegram.token_secret),
+        chat_id=load_manager_secret(directory, telegram.chat_id_secret),
+        message_thread_id=thread_id,
+    )
