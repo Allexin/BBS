@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
@@ -60,7 +61,12 @@ def apply_stable_acls(
         raise StableAclError("Stable root cannot be a reparse point")
     selected = backend or _Pywin32SecurityBackend()
     nginx_sid = selected.account_sid_string(nginx_account)
-    for target in stable_acl_targets(nginx_sid):
+    targets = stable_acl_targets(nginx_sid)
+    by_path = {target.relative_path: target for target in targets}
+    # Protect the sensitive descendants first. If root verification fails after
+    # propagation, config/state still cannot inherit the broad root reader ACL.
+    for relative_path in ("data", "data/public", "."):
+        target = by_path[relative_path]
         path = root if target.relative_path == "." else root / target.relative_path
         if not path.is_dir() or _is_reparse(path):
             raise StableAclError(f"ACL target is missing or unsafe: {target.relative_path}")
@@ -122,5 +128,12 @@ def _is_reparse(path: Path) -> bool:
 
 
 def _normalized_dacl(value: str) -> str:
-    """Ignore Windows' informational auto-inherited flag, not ACE semantics."""
-    return value.replace("D:PAI", "D:P", 1)
+    """Normalize documented Windows canonical forms without weakening ACE semantics."""
+    normalized = value.replace("D:PAI", "D:P", 1)
+    # SetNamedSecurityInfo may split one inheritable read/execute ACE into an
+    # object ACE plus an inherit-only child ACE. The masks below are the Windows
+    # canonical rendering of GENERIC_READ | GENERIC_EXECUTE for the object.
+    pattern = re.compile(
+        r"\(A;;0x1200a9;;;([^)]+)\)\(A;OICIIO;GXGR;;;\1\)"
+    )
+    return pattern.sub(r"(A;OICI;GXGR;;;\1)", normalized)

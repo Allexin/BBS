@@ -17,6 +17,12 @@ def test_readback_normalization_ignores_only_auto_inherited_flag() -> None:
     assert _normalized_dacl(actual.replace(";;;BA", ";;;BU")) != _normalized_dacl(expected)
 
 
+def test_readback_normalization_accepts_windows_split_inheritable_read_execute() -> None:
+    expected = "D:P(A;OICI;GXGR;;;BU)"
+    actual = "D:PAI(A;;0x1200a9;;;BU)(A;OICIIO;GXGR;;;BU)"
+    assert _normalized_dacl(actual) == _normalized_dacl(expected)
+
+
 def test_policy_protects_data_and_limits_public_reader() -> None:
     targets = {item.relative_path: item.sddl for item in stable_acl_targets("S-1-5-21-123")}
     assert ";;;BU)" in targets["."]
@@ -43,7 +49,7 @@ def test_acl_application_uses_only_fixed_safe_targets(tmp_path: Path) -> None:
     (stable / "data/public").mkdir(parents=True)
     backend = _Backend()
     apply_stable_acls(stable, nginx_account="BBS-Web", backend=backend)
-    assert [name for name, _ in backend.applied] == ["Stable", "data", "public"]
+    assert [name for name, _ in backend.applied] == ["data", "public", "Stable"]
 
 
 def test_acl_application_rejects_missing_public_tree(tmp_path: Path) -> None:
