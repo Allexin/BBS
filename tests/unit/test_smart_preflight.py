@@ -16,7 +16,11 @@ def _config() -> SmartConfig:
                 {
                     "id": "backup-disk",
                     "display_name": "Backup disk",
-                    "identity": {"serial": "SERIAL-1", "expected_size_bytes": 1000},
+                    "identity": {
+                        "device": "/dev/pd0",
+                        "serial": "SERIAL-1",
+                        "expected_size_bytes": 1000,
+                    },
                 }
             ],
         }
@@ -27,17 +31,13 @@ class FakeSmartctl:
     def __init__(self, payload: dict[str, Any]) -> None:
         self.payload = payload
         self.timeout: int | None = None
-        self.scan_error = False
-        self.devices = (r"/dev/pd0",)
+        self.read_error = False
         self.read_devices: list[str] = []
         self.after_read: object = None
 
-    def scan(self) -> tuple[str, ...]:
-        if self.scan_error:
-            raise SmartctlError("scan")
-        return self.devices
-
     def read(self, device: str, *, timeout_seconds: int) -> dict[str, Any]:
+        if self.read_error:
+            raise SmartctlError("read")
         self.timeout = timeout_seconds
         self.read_devices.append(device)
         if callable(self.after_read):
@@ -90,21 +90,20 @@ def test_nvme_critical_warning_is_critical() -> None:
     assert observation.metrics.nvme_critical_warning is True
 
 
-def test_missing_mismatched_or_failed_scan_is_unknown_not_exception() -> None:
+def test_mismatched_or_failed_read_is_unknown_not_exception() -> None:
     mismatch = FakeSmartctl({"serial_number": "OTHER", "user_capacity": {"bytes": 1000}})
     observation = SmartPreflight(mismatch).collect(_config())[0]
     assert not observation.collection_success and observation.health == "unknown"
 
     failed = FakeSmartctl({})
-    failed.scan_error = True
+    failed.read_error = True
     observation = SmartPreflight(failed).collect(_config())[0]
-    assert not observation.collection_success and observation.reason == "smartctl scan failed"
+    assert not observation.collection_success and observation.reason == "smartctl read failed"
 
 
 def test_cancellation_stops_allowlist_before_next_device_read() -> None:
     token = CancellationToken()
     backend = FakeSmartctl({})
-    backend.devices = (r"/dev/pd0", r"/dev/pd1")
     backend.after_read = token.request
     preflight = SmartPreflight(
         backend,

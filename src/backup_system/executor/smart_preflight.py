@@ -19,8 +19,6 @@ class SmartctlError(RuntimeError):
 
 
 class SmartctlBackend(Protocol):
-    def scan(self) -> tuple[str, ...]: ...
-
     def read(self, device: str, *, timeout_seconds: int) -> dict[str, Any]: ...
 
 
@@ -37,17 +35,6 @@ class SmartPreflightObservation:
 class SubprocessSmartctlBackend:
     def __init__(self, executable: Path) -> None:
         self._executable = executable
-
-    def scan(self) -> tuple[str, ...]:
-        payload = self._run(("--scan-open", "--json=o"), timeout_seconds=30)
-        devices = payload.get("devices")
-        if not isinstance(devices, list):
-            raise SmartctlError("smartctl scan returned no device list")
-        return tuple(
-            str(item["name"])
-            for item in devices
-            if isinstance(item, dict) and isinstance(item.get("name"), str)
-        )
 
     def read(self, device: str, *, timeout_seconds: int) -> dict[str, Any]:
         return self._run(("--all", "--json=o", device), timeout_seconds=timeout_seconds)
@@ -83,35 +70,29 @@ class SmartPreflight:
         self._cancellation_checkpoint = cancellation_checkpoint or (lambda: None)
 
     def collect(self, config: SmartConfig) -> tuple[SmartPreflightObservation, ...]:
-        self._cancellation_checkpoint()
-        try:
-            devices = self._backend.scan()
-        except SmartctlError:
-            return tuple(_unknown(item, "smartctl scan failed") for item in config.disks)
-        payloads: list[dict[str, Any]] = []
-        for device in devices:
+        observations: list[SmartPreflightObservation] = []
+        for configured in config.disks:
             self._cancellation_checkpoint()
             try:
-                payloads.append(
-                    self._backend.read(device, timeout_seconds=config.per_disk_timeout_seconds)
+                payload = self._backend.read(
+                    configured.identity.device,
+                    timeout_seconds=config.per_disk_timeout_seconds,
                 )
             except SmartctlError:
-                continue
-        return tuple(self._observation(item, payloads) for item in config.disks)
+                observations.append(_unknown(configured, "smartctl read failed"))
+            else:
+                self._cancellation_checkpoint()
+                observations.append(self._observation(configured, payload))
+        return tuple(observations)
 
     @staticmethod
     def _observation(
-        configured: SmartDiskConfig, payloads: list[dict[str, Any]]
+        configured: SmartDiskConfig, payload: dict[str, Any]
     ) -> SmartPreflightObservation:
-        matches = [
-            payload
-            for payload in payloads
-            if _normalize(str(payload.get("serial_number", "")))
-            == _normalize(configured.identity.serial)
-        ]
-        if len(matches) != 1:
-            return _unknown(configured, "configured SMART disk was not identified uniquely")
-        payload = matches[0]
+        if _normalize(str(payload.get("serial_number", ""))) != _normalize(
+            configured.identity.serial
+        ):
+            return _unknown(configured, "configured SMART disk serial does not match")
         capacity = _nested_int(payload, "user_capacity", "bytes")
         if capacity != configured.identity.expected_size_bytes:
             return _unknown(configured, "configured SMART disk capacity does not match")

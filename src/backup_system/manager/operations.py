@@ -502,7 +502,7 @@ class OperationsRepository:
                     "timestamp": timestamp,
                 },
             )
-            if not disk_offline_confirmed:
+            if not disk_offline_confirmed and operation_kind != "smart-test":
                 SafetyLatchRepository(self._connection).set_disk_lifecycle_in_transaction(
                     job_id=str(row[3]),
                     source_run_id=run_id,
@@ -536,7 +536,7 @@ class OperationsRepository:
                         payload=payload,
                         created_at=completed_time,
                     )
-                if not disk_offline_confirmed:
+                if not disk_offline_confirmed and operation_kind != "smart-test":
                     self._notifications.enqueue_in_transaction(
                         deduplication_key=f"run:{run_id}:disk-offline-unconfirmed",
                         run_id=run_id,
@@ -558,11 +558,11 @@ class OperationsRepository:
         timestamp = require_aware(reconciled_at or utc_now()).isoformat()
         with self._connection:
             rows = self._connection.execute(
-                """SELECT run_id, operation_id, job_id, disk_offline_confirmed
+                """SELECT run_id, operation_id, job_id, disk_offline_confirmed, kind
                 FROM runs WHERE state = ? ORDER BY started_at""",
                 (RunState.RUNNING,),
             ).fetchall()
-            for run_value, operation_value, job_value, offline_value in rows:
+            for run_value, operation_value, job_value, offline_value, operation_kind in rows:
                 run_id = UUID(str(run_value))
                 cursor = self._connection.execute(
                     """UPDATE runs SET state = ?, result = ?, finished_at = ?
@@ -600,7 +600,7 @@ class OperationsRepository:
                         "timestamp": timestamp,
                     },
                 )
-                if not bool(offline_value):
+                if not bool(offline_value) and str(operation_kind) != "smart-test":
                     SafetyLatchRepository(self._connection).set_disk_lifecycle_in_transaction(
                         job_id=str(job_value),
                         source_run_id=run_id,

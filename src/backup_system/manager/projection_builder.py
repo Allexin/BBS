@@ -48,7 +48,8 @@ class ProjectionBuilder:
         self,
         connection: sqlite3.Connection,
         *,
-        job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance"]] | None = None,
+        job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance", "smart-test"]]
+        | None = None,
         job_deadlines: dict[str, str | None] | None = None,
         next_operations: dict[str, str] | None = None,
         volume_stale_after_seconds: int = 120,
@@ -155,7 +156,7 @@ class ProjectionBuilder:
             run_rows = self._connection.execute(
                 """SELECT operations.state, runs.result, operations.queued_at,
                     runs.started_at, runs.finished_at, runs.deadline_exceeded_at,
-                    runs.run_id
+                    runs.run_id, runs.stage
                 FROM operations LEFT JOIN runs ON runs.operation_id = operations.operation_id
                 WHERE operations.job_id = ?
                     AND operations.state IN ('queued', 'running', 'completed')
@@ -248,6 +249,7 @@ class ProjectionBuilder:
             finished_at=finished,
             duration_seconds=max(0, int(((finished or now) - (started or queued)).total_seconds())),
             deadline_exceeded=row[5] is not None,
+            stage=str(row[7]) if len(row) > 7 and row[7] is not None else None,
         )
 
     def _latest_metrics(self, run_id: str) -> PublicBackupMetrics | None:

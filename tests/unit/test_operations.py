@@ -452,6 +452,23 @@ def test_service_stop_discards_only_queued_tail(tmp_path: Path) -> None:
         connection.close()
 
 
+def test_interrupted_smart_test_does_not_create_disk_lifecycle_latch(tmp_path: Path) -> None:
+    repository, connection = _repository(tmp_path / "manager.sqlite3")
+    try:
+        repository.enqueue(
+            deduplication_key="scheduled:smart-test",
+            job_id="data",
+            kind="smart-test",
+            trigger_source="scheduled",
+        )
+        claimed = repository.claim_next()
+        assert claimed is not None
+        repository.reconcile_startup()
+        assert SafetyLatchRepository(connection).active() is None
+    finally:
+        connection.close()
+
+
 def test_manual_restore_is_claimed_before_scheduled_tail_fifo(tmp_path: Path) -> None:
     repository, connection = _repository(tmp_path / "manager.sqlite3")
     try:

@@ -45,7 +45,7 @@ def _validate_timezone(value: str) -> str:
 
 
 class CycleItem(StrictModel):
-    operation: Literal["backup", "check", "prune"]
+    operation: Literal["backup", "check", "prune", "smart-test"]
     mode: Literal["metadata", "subset", "full"] | None = None
 
     @model_validator(mode="after")
@@ -273,14 +273,25 @@ class MaintenanceJobConfig(JobBase):
     _owner_id = field_validator("repository_owner_job_id")(_validate_job_id)
 
 
+class SmartTestJobConfig(JobBase):
+    kind: Literal["smart-test"]
+    disk_id: str
+    test_type: Literal["short", "long"]
+    poll_seconds: int = Field(gt=0)
+    timeout_seconds: int = Field(gt=0)
+
+    _disk_id = field_validator("disk_id")(_validate_job_id)
+
+
 ExecutorJobConfig = Annotated[
-    SnapshotJobConfig | MirrorJobConfig | MaintenanceJobConfig,
+    SnapshotJobConfig | MirrorJobConfig | MaintenanceJobConfig | SmartTestJobConfig,
     Field(discriminator="kind"),
 ]
 EXECUTOR_JOB_CONFIG_ADAPTER: TypeAdapter[ExecutorJobConfig] = TypeAdapter(ExecutorJobConfig)
 
 
 class SmartDiskIdentityConfig(StrictModel):
+    device: str = Field(pattern=r"^/dev/pd[0-9]+$")
     serial: str = Field(min_length=1)
     expected_size_bytes: int = Field(gt=0)
 
@@ -303,6 +314,11 @@ class SmartConfig(StrictModel):
     def unique_disks(self) -> SmartConfig:
         ids = [disk.id.casefold() for disk in self.disks]
         serials = [disk.identity.serial.casefold() for disk in self.disks]
-        if len(ids) != len(set(ids)) or len(serials) != len(set(serials)):
-            raise ValueError("SMART disk IDs and serials must be unique")
+        devices = [disk.identity.device.casefold() for disk in self.disks]
+        if (
+            len(ids) != len(set(ids))
+            or len(serials) != len(set(serials))
+            or len(devices) != len(set(devices))
+        ):
+            raise ValueError("SMART disk IDs, serials, and devices must be unique")
         return self

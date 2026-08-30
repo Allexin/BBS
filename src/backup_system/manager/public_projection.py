@@ -24,6 +24,7 @@ class PublicRun(PublicModel):
     finished_at: AwareDatetime | None = None
     duration_seconds: int | None = Field(default=None, ge=0)
     deadline_exceeded: bool = False
+    stage: str | None = None
 
 
 class PublicBackupMetrics(PublicModel):
@@ -40,7 +41,7 @@ class PublicBackupMetrics(PublicModel):
 class PublicJob(PublicModel):
     job_id: str
     display_name: str
-    kind: Literal["snapshot", "mirror", "maintenance", "unknown"]
+    kind: Literal["snapshot", "mirror", "maintenance", "smart-test", "unknown"]
     health: Literal["healthy", "warning", "critical", "unknown"]
     health_reason: str
     next_fire_at: AwareDatetime | None = None

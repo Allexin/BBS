@@ -6,6 +6,7 @@ from backup_system.common.config import (
     ExecutorJobConfig,
     MaintenanceJobConfig,
     MirrorJobConfig,
+    SmartTestJobConfig,
     SnapshotJobConfig,
 )
 
@@ -30,6 +31,7 @@ _ALLOWED: dict[type[object], frozenset[str]] = {
         }
     ),
     MaintenanceJobConfig: frozenset({"prune", "recover"}),
+    SmartTestJobConfig: frozenset({"smart-test"}),
 }
 
 

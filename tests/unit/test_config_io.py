@@ -141,3 +141,35 @@ def test_manager_cycle_must_match_executor_kind(tmp_path: Path) -> None:
     )
     with pytest.raises(ConfigLoadError, match="incompatible with maintenance"):
         validate_config_tree(manager_path)
+
+
+def test_smart_test_job_must_reference_allowlisted_disk(tmp_path: Path) -> None:
+    manager_path = _write_valid_tree(tmp_path)
+    manager_path.write_text(
+        manager_path.read_text(encoding="utf-8").replace(
+            "jobs:\n",
+            "jobs:\n"
+            "  - id: test-disk-health\n"
+            "    enabled: true\n"
+            "    display_name: Test disk health\n"
+            "    schedule:\n"
+            "      cron: '0 3 * * 0'\n"
+            "      timezone: Europe/Samara\n"
+            "      cycle: [{operation: smart-test}]\n",
+        ),
+        encoding="utf-8",
+    )
+    _write(
+        tmp_path / "jobs" / "test-disk-health.yaml",
+        """schema_version: 1
+id: test-disk-health
+kind: smart-test
+display_name: Test disk health
+disk_id: test-disk
+test_type: short
+poll_seconds: 30
+timeout_seconds: 900
+""",
+    )
+    with pytest.raises(ConfigLoadError, match="outside SMART allowlist"):
+        validate_config_tree(manager_path)

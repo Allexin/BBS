@@ -100,3 +100,19 @@ def test_check_uses_normative_subset_mode(tmp_path: Path) -> None:
         mode="subset",
     )
     assert invocation.argv()[-2:] == ("--mode", "subset")
+
+
+def test_smart_test_uses_bounded_executor_argv(tmp_path: Path) -> None:
+    invocation = ExecutorInvocation(
+        python_executable=tmp_path / "python.exe",
+        operation="smart-test",
+        run_id=RUN_ID,
+        job_id="test-disk-health",
+    )
+    assert invocation.argv()[-5:] == (
+        "smart-test",
+        "--run-id",
+        str(RUN_ID),
+        "--job",
+        "test-disk-health",
+    )

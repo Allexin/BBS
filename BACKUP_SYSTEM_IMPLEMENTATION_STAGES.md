@@ -120,6 +120,8 @@
 - последовательные SMART-наблюдения обнаруживают регресс ключевых показателей даже
   при `PASSED` overall и значениях в vendor-норме; первое наблюдение и reset counter
   не создают ложную тревогу.
+- отдельная `smart-test` job запускает разрешённый short/long self-test без изменения
+  storage topology или disk lifecycle и сохраняет его итоговый результат.
 
 ### Этап 6. Mirror adapter
 

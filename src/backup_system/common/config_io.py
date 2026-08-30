@@ -15,6 +15,7 @@ from backup_system.common.config import (
     MaintenanceJobConfig,
     ManagerConfig,
     SmartConfig,
+    SmartTestJobConfig,
     SnapshotJobConfig,
 )
 
@@ -89,13 +90,22 @@ def validate_config_tree(manager_path: Path) -> tuple[ManagerConfig, SmartConfig
     executor_jobs = {job.id: validate_job_with_owner(config_dir, job.id) for job in manager.jobs}
     for manager_job in manager.jobs:
         executor_job = executor_jobs[manager_job.id]
-        allowed = (
-            {"prune"} if isinstance(executor_job, MaintenanceJobConfig) else {"backup", "check"}
-        )
+        if isinstance(executor_job, MaintenanceJobConfig):
+            allowed = {"prune"}
+        elif isinstance(executor_job, SmartTestJobConfig):
+            allowed = {"smart-test"}
+        else:
+            allowed = {"backup", "check"}
         configured = {item.operation for item in manager_job.schedule.cycle}
         if not configured <= allowed:
             raise ConfigLoadError(
                 f"manager cycle for {manager_job.id} is incompatible with {executor_job.kind}"
+            )
+        if isinstance(executor_job, SmartTestJobConfig) and not any(
+            disk.id == executor_job.disk_id for disk in smart.disks
+        ):
+            raise ConfigLoadError(
+                f"SMART test job {executor_job.id} references a disk outside SMART allowlist"
             )
 
     snapshots = [job for job in executor_jobs.values() if isinstance(job, SnapshotJobConfig)]

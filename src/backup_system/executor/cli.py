@@ -11,6 +11,7 @@ from backup_system.common.config import (
     ExecutorJobConfig,
     MaintenanceJobConfig,
     MirrorJobConfig,
+    SmartTestJobConfig,
     SnapshotJobConfig,
     validate_job_id,
 )
@@ -19,7 +20,7 @@ from backup_system.common.config_io import (
     load_smart_config,
     validate_job_with_owner,
 )
-from backup_system.common.events import EventBase
+from backup_system.common.events import EventBase, StageChanged
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
@@ -43,14 +44,29 @@ from backup_system.executor.restore_runtime import (
 )
 from backup_system.executor.runtime import run_recovery
 from backup_system.executor.smart_events import build_smart_events
-from backup_system.executor.smart_preflight import SmartPreflightObservation
+from backup_system.executor.smart_preflight import (
+    SmartPreflight,
+    SmartPreflightObservation,
+    SubprocessSmartctlBackend,
+)
+from backup_system.executor.smart_test import (
+    SubprocessSmartSelfTestBackend,
+    run_smart_self_test,
+)
 from backup_system.executor.snapshot_runtime import run_snapshot_operation
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="backup-executor")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    for command in ("run", "prune", "restore-test", "repair-mirror", "recover"):
+    for command in (
+        "run",
+        "prune",
+        "restore-test",
+        "repair-mirror",
+        "recover",
+        "smart-test",
+    ):
         child = subparsers.add_parser(command)
         child.add_argument("--run-id", required=True, type=parse_uuid4)
         child.add_argument("--job", required=True, type=validate_job_id)
@@ -85,7 +101,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(str(error), file=sys.stderr)
         return ExecutorExitCode.CONFIG_INVALID
     if arguments.command == "recover":
-        if config is None:
+        if config is None or isinstance(config, SmartTestJobConfig):
             raise RuntimeError("recover config was not loaded")
         return _execute_recovery(
             run_id=arguments.run_id,
@@ -95,6 +111,53 @@ def main(argv: Sequence[str] | None = None) -> int:
                 config=config,
                 cancellation=token,
             ),
+            input_stream=sys.stdin.buffer,
+            output_stream=sys.stdout,
+        )
+    if isinstance(config, SmartTestJobConfig) and arguments.command == "smart-test":
+        smart_config = load_smart_config(config_dir / "smart.yaml")
+        disk = next(item for item in smart_config.disks if item.id == config.disk_id)
+
+        def execute_smart_test(
+            token: CancellationToken,
+            smart_sink: Callable[[tuple[SmartPreflightObservation, ...]], None],
+            event_sink: Callable[[EventBase], None],
+        ) -> None:
+            try:
+                event_sink(
+                    StageChanged(event="stage_changed", timestamp=utc_now(), stage="smart-test")
+                )
+                result = run_smart_self_test(
+                    backend=SubprocessSmartSelfTestBackend(root / "bin" / "smartctl.exe"),
+                    disk=disk,
+                    test_type=config.test_type,
+                    poll_seconds=config.poll_seconds,
+                    timeout_seconds=config.timeout_seconds,
+                    checkpoint=token.raise_if_requested,
+                )
+                event_sink(
+                    StageChanged(
+                        event="stage_changed",
+                        timestamp=utc_now(),
+                        stage=(
+                            "smart-test-completed"
+                            if result.passed
+                            else "smart-test-failed"
+                        ),
+                    )
+                )
+                observations = SmartPreflight(
+                    SubprocessSmartctlBackend(root / "bin" / "smartctl.exe"),
+                    cancellation_checkpoint=token.raise_if_requested,
+                ).collect(smart_config)
+                smart_sink(observations)
+            except BaseException as error:
+                raise LifecycleOperationError(error) from error
+
+        return _execute_operation(
+            run_id=arguments.run_id,
+            job_id=arguments.job,
+            operation=execute_smart_test,
             input_stream=sys.stdin.buffer,
             output_stream=sys.stdout,
         )

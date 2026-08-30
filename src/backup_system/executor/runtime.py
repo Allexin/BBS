@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
-from backup_system.common.config import ExecutorJobConfig
+from backup_system.common.config import MaintenanceJobConfig, MirrorJobConfig, SnapshotJobConfig
 from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.coordinator import ExecutorWindowsCoordinator
 from backup_system.executor.disk_control import DiskController
@@ -52,7 +52,7 @@ def build_windows_job(
 def run_recovery(
     *,
     runtime_root: Path,
-    config: ExecutorJobConfig,
+    config: SnapshotJobConfig | MirrorJobConfig | MaintenanceJobConfig,
     cancellation: CancellationToken,
 ) -> RecoveryResult:
     executor_state = runtime_root / "data" / "state" / "executor"

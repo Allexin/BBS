@@ -41,7 +41,9 @@ def _smart_config() -> SmartConfig:
             SmartDiskConfig(
                 id="disk-1",
                 display_name="Disk 1",
-                identity=SmartDiskIdentityConfig(serial="serial", expected_size_bytes=1000),
+                identity=SmartDiskIdentityConfig(
+                    device="/dev/pd0", serial="serial", expected_size_bytes=1000
+                ),
             ),
         ),
     )

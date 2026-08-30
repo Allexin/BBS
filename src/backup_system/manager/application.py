@@ -67,7 +67,8 @@ class ManagerApplication:
         config: ManagerConfig,
         operations: OperationsRepository,
         executor_factory: ExecutorFactory = _default_executor_factory,
-        job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance"]] | None = None,
+        job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance", "smart-test"]]
+        | None = None,
         notification_dispatcher: AsyncNotificationDispatcher | None = None,
     ) -> None:
         self._layout = layout

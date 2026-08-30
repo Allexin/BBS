@@ -862,8 +862,8 @@ disk-lifecycle latch, manual recover.
 
 Точные расписания определяются после измерения первого полного backup и типичного суточного объёма изменений.
 
-SMART не имеет отдельного schedule: он собирается как preflight-стадия каждого
-executor run до основной backup/check/prune работы.
+Текущие SMART-атрибуты читаются как preflight-стадия каждой data operation.
+SMART self-test запускается отдельной `smart-test` job с собственным cron.
 
 ## 16. Telegram
 
@@ -3205,12 +3205,15 @@ Capacity rules:
 
 ### 39.8. SMART collection
 
-SMART собирается внутри preflight каждого executor run через bundled `smartctl.exe`
-с JSON output. Отдельной inventory operation, schedule, queue item или job нет.
+SMART читается внутри preflight data executor runs через bundled `smartctl.exe` с
+JSON output. Отдельная `smart-test` job запускает разрешённый устройством self-test,
+использует обычные schedule, queue, run history и уведомления, но не имеет source,
+repository или disk lifecycle.
 Сбор охватывает все физические диски из фиксированного executor allowlist, включая
 не участвующие в текущей backup job. Adapter:
 
-- обнаруживает устройства через `smartctl --scan-open`;
+- обращается только к явно заданному для allowlist-диска Windows selector вида
+  `/dev/pdN`, затем обязательно сверяет serial и capacity;
 - получает подробные данные и историю уже выполненных self-tests;
 - никогда не запускает SMART short/long/conveyance/offline self-test;
 - нормализует ATA/SATA, SCSI/SAS и NVMe в нашу schema;
@@ -3221,9 +3224,13 @@ SMART собирается внутри preflight каждого executor run ч
 - сохраняет неизвестные vendor attributes только локально;
 - использует bounded timeout на каждый диск.
 
-Запуск SMART self-test не входит в v1 ни как scheduled operation, ни как executor
-stage, ни как команда `backupctl`. Monitoring остаётся пассивным и сам не создаёт
-длительную I/O-нагрузку на диски.
+`smart-test` job адресует только один диск из configured SMART allowlist и
+поддерживает типы `short` и `long`. Она не меняет online/offline state, mount points
+или storage topology и не запускается из Web UI. Job занимает общую последовательную
+executor queue до получения итогового результата, поэтому её cron размещается в
+отдельном maintenance window. Отмена manager run не выдаёт устройству команду
+принудительного прерывания уже начатого self-test: следующий SMART preflight читает
+фактический результат из self-test history.
 
 SMART-stage запускается после того, как executor идентифицировал source/destination и
 перевёл требуемый backup-диск online, но до VSS и основной data operation. Она сама
@@ -3310,9 +3317,9 @@ Telegram policy для SMART:
 - браузер перечитывает `health.json` и `status.json` каждые 10 секунд;
 - manager heartbeat публикуется каждые 5 секунд;
 - free space mounted volumes собирается системным monitoring operation каждые 15 минут;
-- SMART собирается каждый час без принудительного пробуждения спящего диска;
+- SMART self-tests запускаются только по cron отдельных `smart-test` jobs;
 - после backup executor публикует свежие repository/volume metrics через события данного run;
-- полные SMART self-tests не запускаются UI и имеют отдельное расписание будущей версии.
+- SMART self-tests не запускаются UI;
 
 Каждое значение содержит `observed_at`. UI помечает stale по метрике, а не по времени генерации страницы.
 

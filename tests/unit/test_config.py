@@ -8,6 +8,7 @@ from backup_system.common.config import (
     ManagerConfig,
     MirrorJobConfig,
     SmartConfig,
+    SmartTestJobConfig,
     SnapshotJobConfig,
 )
 
@@ -201,13 +202,37 @@ def test_smart_config_rejects_duplicate_serials() -> None:
                     {
                         "id": "source-main",
                         "display_name": "Source",
-                        "identity": {"serial": "SERIAL", "expected_size_bytes": 100},
+                        "identity": {
+                            "device": "/dev/pd0",
+                            "serial": "SERIAL",
+                            "expected_size_bytes": 100,
+                        },
                     },
                     {
                         "id": "backup-main",
                         "display_name": "Backup",
-                        "identity": {"serial": "serial", "expected_size_bytes": 200},
+                        "identity": {
+                            "device": "/dev/pd1",
+                            "serial": "serial",
+                            "expected_size_bytes": 200,
+                        },
                     },
                 ],
             }
         )
+
+
+def test_smart_test_job_is_selected_by_discriminator() -> None:
+    config = EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(
+        {
+            "schema_version": 1,
+            "id": "test-disk-health",
+            "kind": "smart-test",
+            "display_name": "Test disk health",
+            "disk_id": "test-disk",
+            "test_type": "short",
+            "poll_seconds": 30,
+            "timeout_seconds": 900,
+        }
+    )
+    assert isinstance(config, SmartTestJobConfig)

@@ -43,6 +43,7 @@ class ExecutorInvocation:
             "restore-test",
             "repair-mirror",
             "recover",
+            "smart-test",
         }:
             raise ValueError("unsupported executor operation")
         arguments = [
