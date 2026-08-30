@@ -8,6 +8,8 @@ def test_stable_restart_launcher_uses_only_stable_runtime() -> None:
     launcher = (Path(__file__).parents[2] / "restart-bbs.bat").read_text(encoding="utf-8")
     assert "%~dp0.venv\\Scripts\\python.exe" in launcher
     assert "backup_system.deployment.restart" in launcher
+    assert "-Verb RunAs" in launcher
+    assert "WindowsBuiltInRole]::Administrator" in launcher
     assert "poc" not in launcher.casefold()
 
 

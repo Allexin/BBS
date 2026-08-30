@@ -34,6 +34,9 @@ the new manager process:
 restart-bbs.bat
 ```
 
+The launcher requests UAC elevation automatically when started by a non-administrative
+process and propagates the elevated restart result as its own exit code.
+
 Stop is intentionally unbounded. Manager stops accepting commands and schedules,
 discards its queued tail, sends `cancel` to the active executor, waits for executor
 cleanup and confirmed disk-offline processing, publishes final status, then exits.

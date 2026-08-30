@@ -1,5 +1,13 @@
 @echo off
 setlocal
+set "BBS_SELF=%~f0"
+
+powershell.exe -NoProfile -Command "if (([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { exit 0 } else { exit 1 }" >nul 2>&1
+if errorlevel 1 (
+  echo Requesting administrator privileges for validated BBS restart...
+  powershell.exe -NoProfile -Command "$process = Start-Process -FilePath $env:BBS_SELF -Verb RunAs -Wait -PassThru; exit $process.ExitCode"
+  exit /b %errorlevel%
+)
 
 set "BBS_ROOT=%~dp0."
 set "BBS_PYTHON=%~dp0.venv\Scripts\python.exe"
