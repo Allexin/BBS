@@ -23,6 +23,8 @@ perform a backup. The principal finding is a missing production integration laye
 
 **Severity:** blocking
 
+**Status:** corrected; composition and Stable service evidence passed
+
 `run_service` currently initializes the data layout and database, reconciles stale
 runs, and waits for a stop signal. Scheduler, command processing, executor launch,
 event ingestion, notifications, deadlines, reports, monitoring, and public
@@ -56,6 +58,8 @@ Acceptance evidence:
 
 **Severity:** blocking
 
+**Status:** corrected; automated and real NSSM stop evidence passed
+
 The current shutdown callbacks are placeholders. No live command/schedule gate is
 closed, no executor receives cancellation, and no final status is published.
 
@@ -81,6 +85,8 @@ Acceptance evidence:
 ## CA-03 — Enforce Stable and data ACL policy
 
 **Severity:** high
+
+**Status:** corrected; unit and real Stable ACL read-back passed
 
 Deployment and layout creation currently rely on inherited filesystem permissions.
 They do not apply or verify the ACL policy required for Stable, protected configs,
@@ -108,6 +114,8 @@ Acceptance evidence:
 
 **Severity:** blocking
 
+**Status:** corrected; production-composition regression coverage passed
+
 The existing tests exercise manager classes independently. They do not start the
 same composition used by `backup-manager`, which allowed placeholder callbacks to
 pass all checks.
@@ -127,6 +135,8 @@ Required correction:
 ## CA-05 — Correct operational claims and stage status
 
 **Severity:** high
+
+**Status:** corrected; runbooks and Stage 9 evidence now match implementation
 
 The operations runbook describes a fully connected cooperative lifecycle while the
 current production service contains placeholders. The project status also marks
@@ -200,3 +210,11 @@ Implemented evidence:
 7. Stable/data ACL enforcement and elevated acceptance.
 8. Repeat Stage 9 acceptance and update status.
 9. Begin Stage 10 only after all corrective evidence passes.
+
+## Closure
+
+All blocking corrective items are closed. The real Stable manager reached
+`SERVICE_RUNNING`, published an `idle` projection, and completed cooperative NSSM
+stop with a final `stopping` projection. Stable ACL read-back and a non-admin
+Dev-to-Stable application update also passed. Stage 9 is accepted again and Stage 10
+may begin.

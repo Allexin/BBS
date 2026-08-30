@@ -12,7 +12,14 @@ Status: passed on the Stable composition.
 
 ## Stable ACL policy
 
-Status: pending elevated execution.
+Status: passed against the actual test Stable tree.
+
+- protected root, `data`, and `data/public` descriptors passed semantic read-back;
+- the ordinary nginx/deployment account cannot read `data\config\telegram.json`;
+- write access for the explicitly trusted local deployment account is limited to
+  `app`, `.venv`, and `web`;
+- non-admin application update completed successfully without changing `data` or
+  `bin`.
 
 Run from an elevated PowerShell in the repository root:
 
@@ -26,6 +33,8 @@ The machine-readable result is saved to
 `.poc-work\corrective-acl\acl-result.json`.
 
 ## Telegram transport
+
+Status: passed; the test notification was delivered through the configured proxy.
 
 Dev acceptance reads only `secrets\telegram.json`, which is ignored by Git. It does
 not read or modify Stable configuration. Run without elevation:

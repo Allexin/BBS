@@ -21,6 +21,11 @@ The harness creates uniquely named disposable Windows services, does not access 
 backup disk, removes the services in `finally`, and saves its result under
 `.poc-work/stage9/service-result.json`.
 
+Corrective re-acceptance also exercised the real manager composition in the test
+Stable tree: NSSM reached `SERVICE_RUNNING` under LocalSystem, manager published
+`idle`, and manual stop reached `SERVICE_STOPPED` after publishing `stopping`. The
+configuration contained no jobs, so no backup disk was accessed.
+
 NSSM 2.24 does not expose `AppKillProcessTree` through its CLI. The harness follows
 the NSSM documentation by writing that one `REG_DWORD` directly below the temporary
 service's `Parameters` key, flushing it, and checking the value before service start.
