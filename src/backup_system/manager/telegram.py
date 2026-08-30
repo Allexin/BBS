@@ -100,11 +100,13 @@ class AsyncNotificationDispatcher:
         token: str,
         chat_id: str,
         message_thread_id: int | None,
+        proxy_url: str | None,
     ) -> None:
         self._database = database
         self._token = token
         self._chat_id = chat_id
         self._message_thread_id = message_thread_id
+        self._proxy_url = proxy_url
 
     async def dispatch_one(self, *, now: datetime) -> DispatchResult:
         return await asyncio.to_thread(
@@ -113,6 +115,7 @@ class AsyncNotificationDispatcher:
             self._token,
             self._chat_id,
             self._message_thread_id,
+            self._proxy_url,
             now,
         )
 
@@ -122,11 +125,12 @@ def _dispatch_pending(
     token: str,
     chat_id: str,
     message_thread_id: int | None,
+    proxy_url: str | None,
     now: datetime,
 ) -> DispatchResult:
     connection = open_manager_database(database)
     try:
-        with httpx.Client(timeout=10) as client:
+        with httpx.Client(timeout=10, proxy=proxy_url) as client:
             sender = TelegramSender(
                 token=token,
                 chat_id=chat_id,

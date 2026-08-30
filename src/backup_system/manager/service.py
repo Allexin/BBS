@@ -172,4 +172,5 @@ def _notification_dispatcher(
         token=credentials.bot_token,
         chat_id=credentials.chat_id,
         message_thread_id=credentials.message_thread_id,
+        proxy_url=credentials.proxy_url,
     )

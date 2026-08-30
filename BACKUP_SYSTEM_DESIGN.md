@@ -1455,8 +1455,10 @@ telegram:
 ```
 
 `credentials_file` содержит только имя JSON-файла внутри `Stable\data\config`, без
-пути. Файл имеет строгую схему `bot_token`, `chat_id` и необязательный положительный
-`message_thread_id`, защищается ACL `Administrators/System` вместе с остальным
+пути. Файл имеет строгую схему `bot_token`, `chat_id`, необязательный положительный
+`message_thread_id` и необязательный `proxy_url`. `proxy_url` допускает только
+HTTP(S) или SOCKS5 URL; при `null` manager соединяется напрямую. Файл защищается ACL
+`Administrators/System` вместе с остальным
 `data\config` и остаётся обычным переносимым файлом, доступным оператору. Manager не
 следует symlink/reparse point, ограничивает размер файла и никогда не записывает его
 значения в SQLite, журналы, public projection, environment или command line.
@@ -2988,6 +2990,11 @@ product v1 contract. Дальнейшее проектирование deploy/up
 - nginx-каталог не используется как вход manager.
 
 ### 38.3. Integration без реального диска
+
+Тестовые credentials внешних сервисов хранятся только в игнорируемом Git каталоге
+Dev `secrets\` и имеют те же строгие JSON-схемы, что production credentials.
+Integration/acceptance tests никогда не читают и не изменяют Stable credentials.
+Production и Dev credentials не копируются друг в друга автоматически.
 
 - fake restic process: success, warning, malformed JSON, hang, crash;
 - fake disk adapter: identity mismatch, online timeout, offline failure;

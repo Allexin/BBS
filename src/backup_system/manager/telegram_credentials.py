@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path, PureWindowsPath
+from urllib.parse import urlsplit
 
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
 
 _MAX_CREDENTIAL_BYTES = 64 * 1024
 _FILE_ATTRIBUTE_REPARSE_POINT = 0x400
@@ -21,6 +22,16 @@ class TelegramCredentials(BaseModel):
     bot_token: str = Field(min_length=1)
     chat_id: str = Field(min_length=1)
     message_thread_id: int | None = Field(default=None, gt=0)
+    proxy_url: str | None = None
+
+    @field_validator("proxy_url")
+    @classmethod
+    def validate_proxy_url(cls, value: str | None) -> str | None:
+        if value is not None:
+            parsed = urlsplit(value)
+            if parsed.scheme not in {"http", "https", "socks5", "socks5h"} or not parsed.hostname:
+                raise ValueError("proxy_url must be an HTTP or SOCKS5 URL")
+        return value
 
 
 def load_telegram_credentials(config_directory: Path, filename: str) -> TelegramCredentials:

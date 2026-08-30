@@ -64,11 +64,12 @@ def test_async_dispatcher_moves_blocking_work_off_event_loop(
             token="test-token",
             chat_id="test-chat",
             message_thread_id=42,
+            proxy_url=None,
         ).dispatch_one(now=now)
     )
     assert result is DispatchResult.IDLE
     assert observed == [
-        (tmp_path / "manager.sqlite3", "test-token", "test-chat", 42, now)
+        (tmp_path / "manager.sqlite3", "test-token", "test-chat", 42, None, now)
     ]
 
 

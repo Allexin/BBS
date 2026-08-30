@@ -72,4 +72,5 @@ Telegram credentials are stored in the configured JSON filename below
 `data\config` (normally `telegram.json`). The file remains readable to Administrators
 for backup and rotation, but deployment protects it from non-administrative access.
 Use `message_thread_id: null` for a normal chat or a positive topic ID for a forum
-topic. Never commit this file or include it in a support bundle.
+topic. Use `proxy_url: null` for a direct connection or an HTTP(S)/SOCKS5 URL when a
+proxy is required. Never commit this file or include it in a support bundle.
