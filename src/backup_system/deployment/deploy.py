@@ -21,7 +21,6 @@ from backup_system.deployment.security import apply_stable_acls
 
 SERVICE_STOPPED = "SERVICE_STOPPED"
 SERVICE_RUNNING = "SERVICE_RUNNING"
-SERVICE_STOP_PENDING = "SERVICE_STOP_PENDING"
 SEE_MASK_NOCLOSEPROCESS = 0x00000040
 INFINITE = 0xFFFFFFFF
 
@@ -83,7 +82,7 @@ def deploy(
     staging = stable.parent / f".{stable.name}-staging-{uuid4()}"
     switched = False
     try:
-        _stop_service_if_installed(nssm, service_name)
+        _require_service_stopped(nssm, service_name)
         stage_release(source, staging, manifest)
         (staging / "backup-system.root").write_text("BBS Stable root\n", encoding="ascii")
         _run_checked(
@@ -111,8 +110,12 @@ def deploy(
         (stable / "data" / "public").mkdir(parents=True, exist_ok=True)
         apply_stable_acls(stable, nginx_account=nginx_account)
         configure_service(nssm=nssm, service_name=service_name, root=stable)
-        _run_checked([str(nssm), "start", service_name])
-        _wait_for_status(nssm, service_name, SERVICE_RUNNING, attempts=30)
+        print(
+            f"Stable files replaced successfully. Start service {service_name!r} manually; "
+            "deployment is waiting for SERVICE_RUNNING.",
+            flush=True,
+        )
+        _wait_for_status(nssm, service_name, SERVICE_RUNNING, attempts=None)
     except BaseException as error:
         phase = "after Stable switch" if switched else "before Stable switch"
         raise DeploymentError(f"deployment failed {phase}: {error}") from error
@@ -130,28 +133,31 @@ def _git_revision(source: Path) -> str:
     return revision
 
 
-def _stop_service_if_installed(nssm: Path, service_name: str) -> None:
+def _require_service_stopped(nssm: Path, service_name: str) -> None:
     status = _run([str(nssm), "status", service_name])
     if status.returncode != 0:
         return
-    if _command_output(status) == SERVICE_STOPPED:
+    current = _command_output(status)
+    if current == SERVICE_STOPPED:
         return
-    stopped = _run([str(nssm), "stop", service_name])
-    if stopped.returncode != 0 and SERVICE_STOP_PENDING not in _command_output(stopped):
-        raise DeploymentError(
-            f"service stop failed ({stopped.returncode}): {_command_output(stopped)}"
-        )
-    _wait_for_status(nssm, service_name, SERVICE_STOPPED, attempts=None)
+    raise DeploymentError(
+        f"service {service_name!r} must be stopped manually before deployment; "
+        f"current status is {current}"
+    )
 
 
 def _wait_for_status(
     nssm: Path, service_name: str, expected: str, *, attempts: int | None
 ) -> None:
     count = 0
+    last_status: str | None = None
     while True:
         status = _command_output(_run_checked([str(nssm), "status", service_name]))
         if status == expected:
             return
+        if status != last_status:
+            print(f"Waiting for {service_name!r}: current status is {status}", flush=True)
+            last_status = status
         count += 1
         if attempts is not None and count >= attempts:
             raise DeploymentError(f"service did not reach {expected}; current status is {status}")

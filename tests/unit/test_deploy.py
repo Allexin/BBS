@@ -45,7 +45,7 @@ def test_deploy_requires_existing_stable_marker(tmp_path: Path) -> None:
         )
 
 
-def test_deploy_stops_switches_preserves_data_and_restarts(
+def test_deploy_requires_stopped_switches_preserves_data_and_waits_for_manual_start(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     source = tmp_path / "dev"
@@ -72,17 +72,14 @@ def test_deploy_stops_switches_preserves_data_and_restarts(
         (staging / ".venv/Scripts/python.exe").touch()
         (staging / "web").mkdir()
 
-    def stop(nssm: Path, service: str) -> None:
+    def require_stopped(nssm: Path, service: str) -> None:
         del nssm, service
         assert (stable / "app/old.txt").is_file()
-        calls.append("stop")
+        calls.append("require-stopped")
 
     def command(argv, *, env=None) -> subprocess.CompletedProcess[str]:
         del env
-        if list(argv)[1:3] == ["start", "BBS-Test"]:
-            calls.append("start")
-        else:
-            calls.append("prepare")
+        calls.append("prepare")
         return subprocess.CompletedProcess(list(argv), 0, "", "")
 
     def configure(**kwargs: object) -> None:
@@ -91,7 +88,7 @@ def test_deploy_stops_switches_preserves_data_and_restarts(
         calls.append("configure")
 
     monkeypatch.setattr(deploy_module, "stage_release", stage)
-    monkeypatch.setattr(deploy_module, "_stop_service_if_installed", stop)
+    monkeypatch.setattr(deploy_module, "_require_service_stopped", require_stopped)
     monkeypatch.setattr(deploy_module, "_run_checked", command)
     monkeypatch.setattr(deploy_module, "configure_service", configure)
     monkeypatch.setattr(
@@ -111,28 +108,21 @@ def test_deploy_stops_switches_preserves_data_and_restarts(
     )
 
     assert revision == "a" * 40
-    assert calls == ["stop", "prepare", "prepare", "acl", "configure", "start"]
+    assert calls == ["require-stopped", "prepare", "prepare", "acl", "configure"]
     assert config.read_text(encoding="ascii") == "stable-data"
     assert not (stable / "app/old.txt").exists()
 
 
-def test_stop_pending_is_waited_as_cooperative_shutdown(
+def test_deploy_refuses_to_stop_a_running_service(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
-    responses = iter(
-        (
-            subprocess.CompletedProcess([], 0, "SERVICE_RUNNING\x00", ""),
-            subprocess.CompletedProcess([], 1, "", "SERVICE_STOP_PENDING\x00"),
-        )
-    )
-    waited: list[str] = []
-    monkeypatch.setattr(deploy_module, "_run", lambda argv, env=None: next(responses))
     monkeypatch.setattr(
         deploy_module,
-        "_wait_for_status",
-        lambda nssm, service, expected, attempts: waited.append(expected),
+        "_run",
+        lambda argv, env=None: subprocess.CompletedProcess(
+            list(argv), 0, "SERVICE_RUNNING\x00", ""
+        ),
     )
 
-    deploy_module._stop_service_if_installed(tmp_path / "nssm.exe", "BBS-Test")
-
-    assert waited == ["SERVICE_STOPPED"]
+    with pytest.raises(DeploymentError, match="must be stopped manually"):
+        deploy_module._require_service_stopped(tmp_path / "nssm.exe", "BBS-Test")

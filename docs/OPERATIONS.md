@@ -44,9 +44,18 @@ native tools in `bin`, and an approved NSSM executable. From Dev run:
 python -m backup_system.deployment.deploy --stable C:\BackupSystem\Stable --nginx-account <service-account>
 ```
 
-The tool requests UAC elevation, waits for cooperative service stop, copies only the
-release manifest, builds a new frozen non-editable `.venv`, validates Stable config,
-switches application files, verifies NSSM settings, and starts the service. Stable
+For the corrective rollout, run the guarded wrapper from an elevated PowerShell:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_stable_update.ps1 -Stable C:\BackupSystem\Stable -NginxAccount <service-account>
+```
+
+The wrapper requires approved `nssm.exe` and `uv.exe` builds in the elevated PATH.
+
+The tool requests UAC elevation and refuses to proceed unless the service is already
+stopped. It copies only the release manifest, builds a new frozen non-editable `.venv`,
+validates Stable config, switches application files, and verifies NSSM settings. It
+then asks the operator to start the service manually and waits for `SERVICE_RUNNING`. Stable
 `data` and `bin` are never replaced. Dirty Dev files are deployed as-is and the Git
 revision is reported for traceability.
 
