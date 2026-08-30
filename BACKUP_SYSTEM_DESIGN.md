@@ -1339,8 +1339,9 @@ ACL:
 
 - весь Stable root: запись только Administrators/System;
 - `data` — единственный каталог изменяемых application data;
-- `data\config`, `data\state`, `data\logs`, `data\temp`: доступ только
-  Administrators/System;
+- `data\config`: полный доступ Administrators/System и явно доверенного локального
+  configuration/deployment account;
+- `data\state`, `data\logs`, `data\temp`: доступ только Administrators/System;
 - `data\commands\incoming`: запись Administrators/System, чтение manager;
 - `data\public`: запись только manager, чтение nginx service account;
 - nginx не имеет доступа к остальным подкаталогам `data`.
@@ -2929,10 +2930,12 @@ manifest содержит их версии и SHA-256.
 Перенос выполняет отдельный локальный Python deploy script из Dev под обычным
 developer account. Этот script не распространяется пользователям и не управляет
 ACL или Windows service. Для данной локальной машины явно принят trust boundary:
-developer account может изменять только Stable `app`, `.venv` и `web`; компрометация
-этого account позволяет подменить код следующего LocalSystem-запуска. `data` и `bin`
-остаются недоступны для записи. Одноразовый elevated bootstrap отдельно создаёт ACL
-и NSSM service; последующие elevated действия — ручные stop/start service.
+developer account может изменять Stable `app`, `.venv`, `web` и `data/config`;
+компрометация этого account позволяет подменить код следующего LocalSystem-запуска и
+всю backup-конфигурацию, включая Telegram token. Этот риск явно принят владельцем
+системы. `data/state`, logs и `bin` остаются недоступны для записи. Одноразовый
+elevated bootstrap отдельно создаёт ACL, устанавливает закреплённые native tools и
+NSSM service; последующие elevated действия — ручные stop/start service.
 
 Обычный Dev deploy выполняет последовательность:
 

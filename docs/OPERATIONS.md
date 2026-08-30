@@ -82,8 +82,9 @@ bundle. Preserve failed restore directories containing `.restore-incomplete` unt
 failure has been investigated.
 
 Telegram credentials are stored in the configured JSON filename below
-`data\config` (normally `telegram.json`). The file remains readable to Administrators
-for backup and rotation, but deployment protects it from non-administrative access.
+`data\config` (normally `telegram.json`). On the explicitly approved local deployment,
+the trusted configuration/deployment account may read and edit this file together with
+the remaining backup configuration. Treat that account as a backup-system operator.
 Use `message_thread_id: null` for a normal chat or a positive topic ID for a forum
 topic. Use `proxy_url: null` for a direct connection or an HTTP(S)/SOCKS5 URL when a
 proxy is required. Never commit this file or include it in a support bundle.

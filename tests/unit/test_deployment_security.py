@@ -65,9 +65,9 @@ def test_acl_application_rejects_missing_public_tree(tmp_path: Path) -> None:
         apply_stable_acls(stable, nginx_account="BBS-Web", backend=_Backend())
 
 
-def test_deployment_account_is_limited_to_application_trees(tmp_path: Path) -> None:
+def test_deployment_account_can_update_application_and_config_trees(tmp_path: Path) -> None:
     stable = tmp_path / "Stable"
-    for relative in ("data/public", "app", ".venv", "web"):
+    for relative in ("data/public", "data/config", "app", ".venv", "web"):
         (stable / relative).mkdir(parents=True)
 
     class Backend(_Backend):
@@ -84,7 +84,8 @@ def test_deployment_account_is_limited_to_application_trees(tmp_path: Path) -> N
         deployment_account="BBS-Developer",
         backend=backend,
     )
-    application = backend.applied[-3:]
-    assert [name for name, _ in application] == ["app", ".venv", "web"]
+    application = backend.applied[-4:]
+    assert [name for name, _ in application] == ["app", ".venv", "web", "config"]
     assert all(";;;S-1-5-21-456)" in sddl for _, sddl in application)
-    assert all(";;;S-1-5-21-456)" not in sddl for _, sddl in backend.applied[:-3])
+    data_sddl = next(sddl for name, sddl in backend.applied if name == "data")
+    assert "(A;;GX;;;S-1-5-21-456)" in data_sddl

@@ -39,13 +39,23 @@ def apply_administrative_acl(
     )
 
 
-def stable_acl_targets(nginx_sid: str) -> tuple[AclTarget, ...]:
+def stable_acl_targets(
+    nginx_sid: str, deployment_sid: str | None = None
+) -> tuple[AclTarget, ...]:
     if not nginx_sid.startswith("S-"):
         raise StableAclError("nginx account SID is invalid")
     administrative = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+    deployment_traverse = (
+        f"(A;;GX;;;{deployment_sid})"
+        if deployment_sid is not None and deployment_sid != nginx_sid
+        else ""
+    )
     return (
         AclTarget(".", f"D:P{administrative}(A;OICI;GRGX;;;BU)"),
-        AclTarget("data", f"D:P{administrative}(A;;GX;;;{nginx_sid})"),
+        AclTarget(
+            "data",
+            f"D:P{administrative}(A;;GX;;;{nginx_sid}){deployment_traverse}",
+        ),
         AclTarget("data/public", f"D:P{administrative}(A;OICI;GRGX;;;{nginx_sid})"),
     )
 
@@ -62,7 +72,12 @@ def apply_stable_acls(
         raise StableAclError("Stable root cannot be a reparse point")
     selected = backend or _Pywin32SecurityBackend()
     nginx_sid = selected.account_sid_string(nginx_account)
-    targets = stable_acl_targets(nginx_sid)
+    deployment_sid = (
+        selected.account_sid_string(deployment_account)
+        if deployment_account is not None
+        else None
+    )
+    targets = stable_acl_targets(nginx_sid, deployment_sid)
     by_path = {target.relative_path: target for target in targets}
     # Protect the sensitive descendants first. If root verification fails after
     # propagation, config/state still cannot inherit the broad root reader ACL.
@@ -73,7 +88,8 @@ def apply_stable_acls(
             raise StableAclError(f"ACL target is missing or unsafe: {target.relative_path}")
         selected.apply_and_verify(path, target.sddl)
     if deployment_account is not None:
-        deployment_sid = selected.account_sid_string(deployment_account)
+        if deployment_sid is None:
+            raise StableAclError("deployment account SID is unavailable")
         application_sddl = (
             "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
             f"(A;OICI;FA;;;{deployment_sid})"
@@ -83,6 +99,10 @@ def apply_stable_acls(
             if not path.is_dir() or _is_reparse(path):
                 raise StableAclError(f"application ACL target is missing or unsafe: {name}")
             selected.apply_and_verify(path, application_sddl)
+        config = root / "data" / "config"
+        if not config.is_dir() or _is_reparse(config):
+            raise StableAclError("application ACL target is missing or unsafe: data/config")
+        selected.apply_and_verify(config, application_sddl)
 
 
 class _Pywin32SecurityBackend:

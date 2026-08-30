@@ -17,7 +17,6 @@ from backup_system.common.config_io import validate_config_tree
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stable", type=Path, required=True)
-    parser.add_argument("--smartctl", type=Path, required=True)
     parser.add_argument("--device", required=True)
     parser.add_argument("--serial", required=True)
     parser.add_argument("--size", type=int, required=True)
@@ -30,6 +29,8 @@ def main() -> int:
     stable = arguments.stable.resolve(strict=True)
     if not (stable / "backup-system.root").is_file():
         raise RuntimeError("Stable root marker is missing")
+    if not (stable / "bin" / "smartctl.exe").is_file():
+        raise RuntimeError("Pinned Stable smartctl is missing; run the one-time admin setup")
     config = stable / "data" / "config"
     manager_path = config / "manager.yaml"
     manager = _mapping(manager_path)
@@ -88,10 +89,7 @@ def main() -> int:
         _write_yaml_atomic(staged_config / "manager.yaml", manager)
         validate_config_tree(staged_config / "manager.yaml")
 
-    bin_dir = stable / "bin"
-    bin_dir.mkdir(exist_ok=True)
     jobs_dir.mkdir(exist_ok=True)
-    shutil.copy2(arguments.smartctl.resolve(strict=True), bin_dir / "smartctl.exe")
     _write_yaml_atomic(config / "smart.yaml", smart)
     _write_yaml_atomic(jobs_dir / "test-disk-health.yaml", job)
     _write_yaml_atomic(manager_path, manager)

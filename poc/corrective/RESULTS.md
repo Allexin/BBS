@@ -15,9 +15,10 @@ Status: passed on the Stable composition.
 Status: passed against the actual test Stable tree.
 
 - protected root, `data`, and `data/public` descriptors passed semantic read-back;
-- the ordinary nginx/deployment account cannot read `data\config\telegram.json`;
-- write access for the explicitly trusted local deployment account is limited to
-  `app`, `.venv`, and `web`;
+- the explicitly trusted local deployment account may manage `data\config`, including
+  `telegram.json`, as an accepted local security boundary;
+- its application write access remains limited to `app`, `.venv`, and `web`; `bin`,
+  state, and logs remain protected;
 - non-admin application update completed successfully without changing `data` or
   `bin`.
 
