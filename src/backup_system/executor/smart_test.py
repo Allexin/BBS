@@ -5,12 +5,13 @@ from __future__ import annotations
 import json
 import subprocess
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from backup_system.common.config import SmartDiskConfig
+from backup_system.executor.storage_inventory import ComStorageInventorySource, DiskRecord
 
 
 class SmartSelfTestError(RuntimeError):
@@ -36,29 +37,38 @@ class SmartSelfTestBackend(Protocol):
 
 
 class SubprocessSmartSelfTestBackend:
-    def __init__(self, executable: Path, *, command_timeout_seconds: int = 30) -> None:
+    def __init__(
+        self,
+        executable: Path,
+        *,
+        command_timeout_seconds: int = 30,
+        inventory: Callable[[], Sequence[DiskRecord]] | None = None,
+    ) -> None:
         self._executable = executable
         self._timeout = command_timeout_seconds
+        self._inventory = inventory or (lambda: ComStorageInventorySource().disks())
+        self._capacity_fallbacks: dict[str, int] = {}
 
     def identify(self, device: str) -> tuple[str, int | None]:
-        info = self._run(("--info", "--json=o", device))
-        return str(info.get("serial_number", "")), _capacity(info)
+        info = self._run(("--all", "--json=o", device))
+        return str(info.get("serial_number", "")), (
+            _capacity(info) or self._capacity_fallbacks.get(device)
+        )
 
     def discover(self) -> tuple[SmartDiskConfig, ...]:
-        payload = self._run(("--scan-open", "--json=o"))
-        devices = payload.get("devices")
-        if not isinstance(devices, list):
-            raise SmartSelfTestError("smartctl discovery returned no device list")
         discovered: list[SmartDiskConfig] = []
-        for index, item in enumerate(devices):
-            if not isinstance(item, dict):
-                continue
-            device = str(item.get("name", ""))
-            if not device.startswith("/dev/pd") or not device[7:].isdigit():
-                continue
+        records = sorted(self._inventory(), key=lambda item: item.number)
+        for index, record in enumerate(records):
+            device = f"/dev/pd{record.number}"
             serial, capacity = self.identify(device)
-            if not serial or capacity is None or capacity <= 0:
+            if not serial:
                 raise SmartSelfTestError("discovered SMART disk identity is incomplete")
+            if _normalize(serial) != _normalize(record.serial):
+                raise SmartSelfTestError("Windows and smartctl disk serials do not match")
+            if capacity is not None and capacity != record.size_bytes:
+                raise SmartSelfTestError("Windows and smartctl disk capacities do not match")
+            self._capacity_fallbacks[device] = record.size_bytes
+            capacity = record.size_bytes
             discovered.append(
                 SmartDiskConfig.model_validate(
                     {

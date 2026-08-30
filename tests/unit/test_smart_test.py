@@ -1,13 +1,17 @@
+from pathlib import Path
+
 import pytest
 
 from backup_system.common.config import SmartDiskConfig
 from backup_system.executor.smart_test import (
     SmartSelfTestError,
     SmartSelfTestStatus,
+    SubprocessSmartSelfTestBackend,
     parse_self_test_status,
     run_smart_self_test,
     run_smart_self_tests,
 )
+from backup_system.executor.storage_inventory import DiskRecord
 
 
 class Backend:
@@ -78,6 +82,28 @@ def test_self_test_rejects_identity_mismatch_before_start() -> None:
             checkpoint=lambda: None,
         )
     assert backend.started is None
+
+
+def test_all_system_discovery_uses_windows_disk_numbers_and_verifies_identity(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+) -> None:
+    backend = SubprocessSmartSelfTestBackend(
+        tmp_path / "smartctl.exe",
+        inventory=lambda: (
+            DiskRecord(3, "SERIAL-3", 3000, False, False, False),
+            DiskRecord(0, "SERIAL-0", 1000, False, True, True),
+        ),
+    )
+    identities = {
+        "/dev/pd0": ("SERIAL-0", 1000),
+        "/dev/pd3": ("SERIAL-3", 3000),
+    }
+    monkeypatch.setattr(backend, "identify", lambda device: identities[device])
+
+    disks = backend.discover()
+
+    assert [disk.identity.device for disk in disks] == ["/dev/pd0", "/dev/pd3"]
+    assert [disk.identity.serial for disk in disks] == ["SERIAL-0", "SERIAL-3"]
 
 
 def test_multi_disk_test_continues_after_one_disk_fails() -> None:
