@@ -54,22 +54,36 @@ def test_ata_smart_json_is_normalized_without_absolute_threshold_gaps() -> None:
         "power_on_time": {"hours": 500},
         "ata_smart_attributes": {
             "table": [
-                {"id": 5, "raw": {"value": 2}},
-                {"id": 197, "raw": {"value": 1}},
-                {"id": 198, "raw": {"value": 0}},
-                {"id": 199, "raw": {"value": 4}},
+                {"id": 5, "name": "Reallocated_Sector_Ct", "raw": {"value": 2}},
+                {"id": 197, "name": "Current_Pending_Sector", "raw": {"value": 1}},
+                {"id": 198, "name": "Offline_Uncorrectable", "raw": {"value": 0}},
+                {"id": 199, "name": "UDMA_CRC_Error_Count", "raw": {"value": 4}},
             ]
         },
     }
     backend = FakeSmartctl(payload)
     observation = SmartPreflight(backend).collect(_config())[0]
-    assert observation.collection_success and observation.health == "healthy"
+    assert observation.collection_success and observation.health == "critical"
     assert observation.metrics.pending_sectors == 1
     assert observation.metrics.interface_crc_errors == 4
     assert observation.identity_key is not None
     assert len(observation.identity_key) == 64
     assert "serial-1" not in observation.identity_key
     assert backend.timeout == 5
+
+
+def test_vendor_specific_attribute_id_is_not_mislabelled() -> None:
+    payload = {
+        "serial_number": "SERIAL-1",
+        "user_capacity": {"bytes": 1000},
+        "smart_status": {"passed": True},
+        "ata_smart_attributes": {
+            "table": [{"id": 5, "name": "Retired_Block_Count", "raw": {"value": 999}}]
+        },
+    }
+    observation = SmartPreflight(FakeSmartctl(payload)).collect(_config())[0]
+    assert observation.health == "healthy"
+    assert observation.metrics.reallocated_sectors is None
 
 
 def test_nvme_critical_warning_is_critical() -> None:

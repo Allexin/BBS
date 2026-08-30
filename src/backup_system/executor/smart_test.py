@@ -326,11 +326,32 @@ def _public_details(payload: dict[str, Any]) -> dict[str, str]:
     rotation = payload.get("rotation_rate")
     media = "nvme" if "nvme" in protocol.casefold() else "ssd" if rotation == 0 else "hdd"
     return {
-        "manufacturer": family or "Unknown",
+        "manufacturer": _manufacturer(payload, model, family),
         "model": model or "Unknown",
         "media_type": media,
         "bus_type": protocol or "Unknown",
     }
+
+
+def _manufacturer(payload: dict[str, Any], model: str, family: str) -> str:
+    explicit = str(payload.get("vendor", "") or payload.get("scsi_vendor", "")).strip()
+    if explicit:
+        return explicit
+    material = f"{model} {family}".casefold()
+    brands = (
+        ("kingston", "Kingston"), ("toshiba", "Toshiba"),
+        ("western digital", "Western Digital"), ("wdc", "Western Digital"),
+        ("seagate", "Seagate"), ("samsung", "Samsung"), ("crucial", "Crucial"),
+        ("intel", "Intel"), ("sandisk", "SanDisk"),
+    )
+    for marker, display in brands:
+        if marker in material:
+            return display
+    if model.upper().startswith("ST"):
+        return "Seagate"
+    if model.upper().startswith("WD"):
+        return "Western Digital"
+    return "Unknown"
 
 
 def _public_mounts(paths: Sequence[str]) -> tuple[str, ...]:

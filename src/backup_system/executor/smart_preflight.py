@@ -106,9 +106,23 @@ class SmartPreflight:
         if capacity is not None and capacity != configured.identity.expected_size_bytes:
             return _unknown(configured, "configured SMART disk capacity does not match")
         metrics = _parse_metrics(payload)
-        health: Literal["critical", "healthy"]
-        if metrics.overall_passed is False or metrics.nvme_critical_warning is True:
+        health: Literal["critical", "warning", "healthy"]
+        if (
+            metrics.overall_passed is False
+            or metrics.nvme_critical_warning is True
+            or any(
+                value is not None and value > 0
+                for value in (
+                    metrics.pending_sectors,
+                    metrics.offline_uncorrectable,
+                    metrics.reported_uncorrectable,
+                    metrics.nvme_media_errors,
+                )
+            )
+        ):
             health = "critical"
+        elif metrics.reallocated_sectors is not None and metrics.reallocated_sectors > 0:
+            health = "warning"
         else:
             health = "healthy"
         return SmartPreflightObservation(
@@ -141,29 +155,45 @@ def _parse_metrics(payload: dict[str, Any]) -> SmartMetrics:
             _nested_int(payload, "power_on_time", "hours"),
             _optional_int(nvme.get("power_on_hours")),
         ),
-        reallocated_sectors=attributes.get(5),
-        pending_sectors=attributes.get(197),
-        offline_uncorrectable=attributes.get(198),
-        reported_uncorrectable=attributes.get(187),
-        interface_crc_errors=attributes.get(199),
+        reallocated_sectors=attributes.get("reallocated_sectors"),
+        pending_sectors=attributes.get("pending_sectors"),
+        offline_uncorrectable=attributes.get("offline_uncorrectable"),
+        reported_uncorrectable=attributes.get("reported_uncorrectable"),
+        interface_crc_errors=attributes.get("interface_crc_errors"),
         nvme_percentage_used=_optional_int(nvme.get("percentage_used")),
         nvme_media_errors=_optional_int(nvme.get("media_errors")),
     )
 
 
-def _ata_attributes(payload: dict[str, Any]) -> dict[int, int]:
+_ATA_COUNTERS: dict[tuple[int, str], str] = {
+    (5, "reallocated_sector_ct"): "reallocated_sectors",
+    (5, "reallocated_sector_count"): "reallocated_sectors",
+    (187, "reported_uncorrect"): "reported_uncorrectable",
+    (187, "reported_uncorrectable_errors"): "reported_uncorrectable",
+    (197, "current_pending_sector"): "pending_sectors",
+    (198, "offline_uncorrectable"): "offline_uncorrectable",
+    (199, "udma_crc_error_count"): "interface_crc_errors",
+}
+
+
+def _ata_attributes(payload: dict[str, Any]) -> dict[str, int]:
     table = payload.get("ata_smart_attributes")
     table = table.get("table") if isinstance(table, dict) else None
-    result: dict[int, int] = {}
+    result: dict[str, int] = {}
     if not isinstance(table, list):
         return result
     for item in table:
         if not isinstance(item, dict) or not isinstance(item.get("id"), int):
             continue
+        counter = _ATA_COUNTERS.get(
+            (int(item["id"]), str(item.get("name", "")).strip().casefold())
+        )
+        if counter is None:
+            continue
         raw = item.get("raw")
         value = raw.get("value") if isinstance(raw, dict) else None
         if isinstance(value, int) and value >= 0:
-            result[int(item["id"])] = value
+            result[counter] = value
     return result
 
 

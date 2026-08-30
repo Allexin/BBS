@@ -3293,6 +3293,14 @@ SMART overall `PASSED` не отменяет анализ отдельных cou
 - `unknown`: SMART недоступен, устройство/bridge не поддерживается или данные устарели;
 - `healthy`: сбор свежий, overall pass и нет warning/critical rules.
 
+ATA attribute ID сам по себе недостаточен для нормализации vendor-specific данных.
+Adapter принимает standard counter только когда одновременно совпадают ID и известное
+каноническое имя из smartctl drive database; неизвестное либо переопределённое имя
+остаётся локальной vendor-метрикой и не попадает в общий counter/health/trend.
+Ненулевые current pending, offline/reported uncorrectable и NVMe media errors дают
+`critical`, ненулевые reallocated sectors дают как минимум `warning`, даже для первого
+baseline. Это абсолютные признаки и они не зависят от наличия предыдущего наблюдения.
+
 Последний результат self-test участвует в итоговом health диска отдельно от
 пассивных attributes: `timeout|unsupported` дают как минимум `warning`, а явно
 завершившийся неуспешно self-test — `critical`. UI одновременно показывает passive
@@ -3387,6 +3395,14 @@ Telegram policy для SMART:
 - raw restic/smartctl output;
 - secrets, usernames и command lines;
 - Telegram identifiers.
+
+SMART UI выводит физические диски одной вертикальной лентой: одна полноширинная
+карточка на диск. В верхней части находятся identity-safe описание, mount points,
+итоговый health, passive SMART health и последний self-test. Нормализованные metrics
+показываются ниже компактной таблицей `indicator/current/delta/24h/30d/state` с
+человеческими названиями; неприменимые ATA/NVMe строки скрываются, отсутствующие
+значения обозначаются коротким тире. Ошибка self-test и её причина всегда находятся
+выше таблицы и не маскируются здоровыми passive counters.
 
 ## 40. Планирование запусков
 
