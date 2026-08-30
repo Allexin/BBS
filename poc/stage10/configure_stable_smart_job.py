@@ -71,7 +71,7 @@ def main() -> int:
         "id": "test-disk-health",
         "kind": "smart-test",
         "display_name": "Test disk SMART short test",
-        "disk_id": "test-disk",
+        "target": {"mode": "all-system"},
         "test_type": "short",
         "poll_seconds": 10,
         "timeout_seconds": 900,

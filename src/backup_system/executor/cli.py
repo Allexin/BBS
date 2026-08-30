@@ -50,8 +50,9 @@ from backup_system.executor.smart_preflight import (
     SubprocessSmartctlBackend,
 )
 from backup_system.executor.smart_test import (
+    SmartSelfTestError,
     SubprocessSmartSelfTestBackend,
-    run_smart_self_test,
+    run_smart_self_tests,
 )
 from backup_system.executor.snapshot_runtime import run_snapshot_operation
 
@@ -116,7 +117,6 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
     if isinstance(config, SmartTestJobConfig) and arguments.command == "smart-test":
         smart_config = load_smart_config(config_dir / "smart.yaml")
-        disk = next(item for item in smart_config.disks if item.id == config.disk_id)
 
         def execute_smart_test(
             token: CancellationToken,
@@ -127,22 +127,44 @@ def main(argv: Sequence[str] | None = None) -> int:
                 event_sink(
                     StageChanged(event="stage_changed", timestamp=utc_now(), stage="smart-test")
                 )
-                result = run_smart_self_test(
-                    backend=SubprocessSmartSelfTestBackend(root / "bin" / "smartctl.exe"),
-                    disk=disk,
+                backend = SubprocessSmartSelfTestBackend(root / "bin" / "smartctl.exe")
+                disks = (
+                    backend.discover()
+                    if config.target.mode == "all-system"
+                    else tuple(
+                        item
+                        for item in smart_config.disks
+                        if item.id == config.target.disk_id
+                    )
+                )
+                def report_disk(index: int, total: int) -> None:
+                    event_sink(
+                        StageChanged(
+                            event="stage_changed",
+                            timestamp=utc_now(),
+                            stage=f"smart-test-{index}-of-{total}",
+                        )
+                    )
+
+                failures = run_smart_self_tests(
+                    backend=backend,
+                    disks=disks,
                     test_type=config.test_type,
                     poll_seconds=config.poll_seconds,
                     timeout_seconds=config.timeout_seconds,
                     checkpoint=token.raise_if_requested,
+                    on_disk=report_disk,
                 )
+                if failures:
+                    raise SmartSelfTestError(
+                        f"SMART self-test failed for {len(failures)} of {len(disks)} disks"
+                    )
                 event_sink(
                     StageChanged(
                         event="stage_changed",
                         timestamp=utc_now(),
                         stage=(
                             "smart-test-completed"
-                            if result.passed
-                            else "smart-test-failed"
                         ),
                     )
                 )

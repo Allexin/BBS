@@ -101,8 +101,10 @@ def validate_config_tree(manager_path: Path) -> tuple[ManagerConfig, SmartConfig
             raise ConfigLoadError(
                 f"manager cycle for {manager_job.id} is incompatible with {executor_job.kind}"
             )
-        if isinstance(executor_job, SmartTestJobConfig) and not any(
-            disk.id == executor_job.disk_id for disk in smart.disks
+        if (
+            isinstance(executor_job, SmartTestJobConfig)
+            and executor_job.target.mode == "configured-disk"
+            and not any(disk.id == executor_job.target.disk_id for disk in smart.disks)
         ):
             raise ConfigLoadError(
                 f"SMART test job {executor_job.id} references a disk outside SMART allowlist"

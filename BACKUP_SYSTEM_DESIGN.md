@@ -3248,13 +3248,24 @@ repository или disk lifecycle.
 - сохраняет неизвестные vendor attributes только локально;
 - использует bounded timeout на каждый диск.
 
-`smart-test` job адресует только один диск из configured SMART allowlist и
-поддерживает типы `short` и `long`. Она не меняет online/offline state, mount points
-или storage topology и не запускается из Web UI. Job занимает общую последовательную
-executor queue до получения итогового результата, поэтому её cron размещается в
-отдельном maintenance window. Отмена manager run не выдаёт устройству команду
-принудительного прерывания уже начатого self-test: следующий SMART preflight читает
-фактический результат из self-test history.
+`smart-test` job поддерживает два target mode: `configured-disk` адресует один диск
+из configured SMART allowlist, а `all-system` на старте run получает через smartctl
+фиксированный снимок всех доступных Windows physical-disk selectors `/dev/pdN`.
+Discovery не включает logical volumes и не меняется в середине run. Для каждого
+обнаруженного устройства executor читает identity/capabilities и последовательно
+запускает разрешённый `short` либо `long` self-test. Ошибка, отсутствие SMART или
+unsupported self-test одного диска сохраняется как отдельный результат и не мешает
+попытке проверить остальные диски снимка; общий run завершается failed, если хотя бы
+один целевой диск не завершил тест успешно. Пустой discovery также является failed,
+а не успешной проверкой нуля устройств.
+
+Оба режима не меняют online/offline state, mount points или storage topology и не
+запускаются из Web UI. Job занимает общую последовательную executor queue до
+получения итогового результата, поэтому её cron размещается в отдельном maintenance
+window. Отмена manager run не выдаёт устройству команду принудительного прерывания
+уже начатого self-test: следующий SMART preflight читает фактический результат из
+self-test history. Публичные результаты all-system используют необратимый identity
+key и не раскрывают serial, WWN либо raw device selector.
 
 SMART-stage запускается после того, как executor идентифицировал source/destination и
 перевёл требуемый backup-диск online, но до VSS и основной data operation. Она сама

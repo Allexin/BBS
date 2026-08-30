@@ -6,6 +6,7 @@ from backup_system.executor.smart_test import (
     SmartSelfTestStatus,
     parse_self_test_status,
     run_smart_self_test,
+    run_smart_self_tests,
 )
 
 
@@ -77,6 +78,32 @@ def test_self_test_rejects_identity_mismatch_before_start() -> None:
             checkpoint=lambda: None,
         )
     assert backend.started is None
+
+
+def test_multi_disk_test_continues_after_one_disk_fails() -> None:
+    class MultiBackend(Backend):
+        def identify(self, device: str) -> tuple[str, int | None]:
+            return ("wrong" if device == "/dev/pd2" else "test-serial"), 1_000_000
+
+        def status(self, device: str) -> SmartSelfTestStatus:
+            return self.statuses.pop(0)
+
+    backend = MultiBackend([SmartSelfTestStatus(False, True, "Completed")])
+    second = _disk().model_copy(
+        update={"identity": _disk().identity.model_copy(update={"device": "/dev/pd3"})}
+    )
+    observed: list[tuple[int, int]] = []
+    failures = run_smart_self_tests(
+        backend=backend,
+        disks=(_disk(), second),
+        test_type="short",
+        poll_seconds=1,
+        timeout_seconds=10,
+        checkpoint=lambda: None,
+        on_disk=lambda index, total: observed.append((index, total)),
+    )
+    assert failures == ("test-disk",)
+    assert observed == [(1, 2), (2, 2)]
 
 
 def test_ata_and_nvme_status_are_classified() -> None:

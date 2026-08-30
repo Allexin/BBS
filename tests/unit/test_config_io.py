@@ -165,7 +165,9 @@ def test_smart_test_job_must_reference_allowlisted_disk(tmp_path: Path) -> None:
 id: test-disk-health
 kind: smart-test
 display_name: Test disk health
-disk_id: test-disk
+target:
+  mode: configured-disk
+  disk_id: test-disk
 test_type: short
 poll_seconds: 30
 timeout_seconds: 900

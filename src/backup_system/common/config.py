@@ -273,15 +273,28 @@ class MaintenanceJobConfig(JobBase):
     _owner_id = field_validator("repository_owner_job_id")(_validate_job_id)
 
 
-class SmartTestJobConfig(JobBase):
-    kind: Literal["smart-test"]
+class ConfiguredSmartTarget(StrictModel):
+    mode: Literal["configured-disk"]
     disk_id: str
-    test_type: Literal["short", "long"]
-    poll_seconds: int = Field(gt=0)
-    timeout_seconds: int = Field(gt=0)
 
     _disk_id = field_validator("disk_id")(_validate_job_id)
 
+
+class AllSystemSmartTarget(StrictModel):
+    mode: Literal["all-system"]
+
+
+SmartTestTarget = Annotated[
+    ConfiguredSmartTarget | AllSystemSmartTarget, Field(discriminator="mode")
+]
+
+
+class SmartTestJobConfig(JobBase):
+    kind: Literal["smart-test"]
+    target: SmartTestTarget
+    test_type: Literal["short", "long"]
+    poll_seconds: int = Field(gt=0)
+    timeout_seconds: int = Field(gt=0)
 
 ExecutorJobConfig = Annotated[
     SnapshotJobConfig | MirrorJobConfig | MaintenanceJobConfig | SmartTestJobConfig,

@@ -229,10 +229,11 @@ def test_smart_test_job_is_selected_by_discriminator() -> None:
             "id": "test-disk-health",
             "kind": "smart-test",
             "display_name": "Test disk health",
-            "disk_id": "test-disk",
+            "target": {"mode": "all-system"},
             "test_type": "short",
             "poll_seconds": 30,
             "timeout_seconds": 900,
         }
     )
     assert isinstance(config, SmartTestJobConfig)
+    assert config.target.mode == "all-system"

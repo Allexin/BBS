@@ -26,6 +26,8 @@ class SmartSelfTestStatus:
 
 
 class SmartSelfTestBackend(Protocol):
+    def discover(self) -> tuple[SmartDiskConfig, ...]: ...
+
     def identify(self, device: str) -> tuple[str, int | None]: ...
 
     def start(self, device: str, test_type: Literal["short", "long"]) -> None: ...
@@ -41,6 +43,38 @@ class SubprocessSmartSelfTestBackend:
     def identify(self, device: str) -> tuple[str, int | None]:
         info = self._run(("--info", "--json=o", device))
         return str(info.get("serial_number", "")), _capacity(info)
+
+    def discover(self) -> tuple[SmartDiskConfig, ...]:
+        payload = self._run(("--scan-open", "--json=o"))
+        devices = payload.get("devices")
+        if not isinstance(devices, list):
+            raise SmartSelfTestError("smartctl discovery returned no device list")
+        discovered: list[SmartDiskConfig] = []
+        for index, item in enumerate(devices):
+            if not isinstance(item, dict):
+                continue
+            device = str(item.get("name", ""))
+            if not device.startswith("/dev/pd") or not device[7:].isdigit():
+                continue
+            serial, capacity = self.identify(device)
+            if not serial or capacity is None or capacity <= 0:
+                raise SmartSelfTestError("discovered SMART disk identity is incomplete")
+            discovered.append(
+                SmartDiskConfig.model_validate(
+                    {
+                        "id": f"system-disk-{index + 1}",
+                        "display_name": f"System disk {index + 1}",
+                        "identity": {
+                            "device": device,
+                            "serial": serial,
+                            "expected_size_bytes": capacity,
+                        },
+                    }
+                )
+            )
+        if not discovered:
+            raise SmartSelfTestError("smartctl discovery found no physical disks")
+        return tuple(discovered)
 
     def start(self, device: str, test_type: Literal["short", "long"]) -> None:
         payload = self._run((f"--test={test_type}", "--json=o", device))
@@ -106,6 +140,33 @@ def run_smart_self_test(
         if monotonic() >= deadline:
             raise SmartSelfTestError("SMART self-test completion timed out")
         sleep(poll_seconds)
+
+
+def run_smart_self_tests(
+    *,
+    backend: SmartSelfTestBackend,
+    disks: tuple[SmartDiskConfig, ...],
+    test_type: Literal["short", "long"],
+    poll_seconds: int,
+    timeout_seconds: int,
+    checkpoint: Callable[[], None],
+    on_disk: Callable[[int, int], None],
+) -> tuple[str, ...]:
+    failures: list[str] = []
+    for index, disk in enumerate(disks, start=1):
+        on_disk(index, len(disks))
+        try:
+            run_smart_self_test(
+                backend=backend,
+                disk=disk,
+                test_type=test_type,
+                poll_seconds=poll_seconds,
+                timeout_seconds=timeout_seconds,
+                checkpoint=checkpoint,
+            )
+        except SmartSelfTestError:
+            failures.append(disk.id)
+    return tuple(failures)
 
 
 def parse_self_test_status(payload: dict[str, Any]) -> SmartSelfTestStatus:
