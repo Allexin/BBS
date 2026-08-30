@@ -10,6 +10,7 @@ from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.executor_process import ExecutorProcessResult
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
+from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
 
 
@@ -218,5 +219,59 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
     try:
         asyncio.run(scenario())
         assert connection.execute("SELECT result FROM runs").fetchone() == ("cancelled",)
+    finally:
+        connection.close()
+
+
+def test_executor_transport_failure_becomes_durable_run_and_alert(tmp_path: Path) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    notifications = NotificationRepository(connection)
+    operations = OperationsRepository(connection, notifications)
+    config = _config()
+    operations.upsert_job(
+        job_id="data", display_name="Data", enabled=True, config_valid=True
+    )
+
+    class FailingExecutor:
+        async def run(self, invocation: object) -> ExecutorProcessResult:
+            del invocation
+            raise RuntimeError("test transport failure")
+
+        async def cancel_current(self) -> bool:
+            return False
+
+    application = ManagerApplication(
+        layout=layout,
+        config=config,
+        operations=operations,
+        executor_factory=lambda on_event, on_stderr: FailingExecutor(),
+    )
+    application.initialize()
+    operations.enqueue(
+        deduplication_key="test:failure",
+        job_id="data",
+        kind="backup",
+        trigger_source="manual",
+    )
+
+    async def scenario() -> None:
+        assert await application.run_iteration()
+        await application.wait_executor()
+
+    try:
+        asyncio.run(scenario())
+        assert connection.execute(
+            "SELECT result, exit_code, disk_offline_confirmed FROM runs"
+        ).fetchone() == ("failed", 30, 0)
+        kinds = {
+            str(row[0])
+            for row in connection.execute("SELECT kind FROM notifications").fetchall()
+        }
+        assert kinds == {"run_failed", "disk_offline_unconfirmed"}
     finally:
         connection.close()

@@ -13,6 +13,7 @@ from backup_system.common.config_io import validate_job_with_owner
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
+from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
 
 AsyncCallback = Callable[[], Awaitable[None]]
@@ -61,7 +62,7 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
     initialize_data_layout(layout)
     connection = open_manager_database(layout.database)
     try:
-        operations = OperationsRepository(connection)
+        operations = OperationsRepository(connection, NotificationRepository(connection))
         for job in config.jobs:
             operations.upsert_job(
                 job_id=job.id,
