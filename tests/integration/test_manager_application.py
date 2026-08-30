@@ -12,6 +12,7 @@ from backup_system.manager.executor_process import ExecutorProcessResult
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
+from backup_system.manager.service import ServiceLifecycle
 
 
 def _config() -> ManagerConfig:
@@ -279,5 +280,76 @@ def test_executor_transport_failure_becomes_durable_run_and_alert(tmp_path: Path
             for row in connection.execute("SELECT kind FROM notifications").fetchall()
         }
         assert kinds == {"run_failed", "disk_offline_unconfirmed"}
+    finally:
+        connection.close()
+
+
+def test_service_shutdown_cancels_live_executor_and_discards_tail(tmp_path: Path) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    operations = OperationsRepository(connection)
+    config = _config()
+    operations.upsert_job(
+        job_id="data", display_name="Data", enabled=True, config_valid=True
+    )
+    executor: _CancellableExecutor | None = None
+
+    def factory(on_event: object, on_stderr: object) -> _CancellableExecutor:
+        nonlocal executor
+        del on_stderr
+        executor = _CancellableExecutor(on_event)
+        return executor
+
+    application = ManagerApplication(
+        layout=layout,
+        config=config,
+        operations=operations,
+        executor_factory=factory,
+    )
+    application.initialize()
+    operations.enqueue(
+        deduplication_key="test:active",
+        job_id="data",
+        kind="backup",
+        trigger_source="manual",
+    )
+
+    async def scenario() -> None:
+        assert await application.run_iteration()
+        assert executor is not None
+        await executor.started.wait()
+        queued = operations.enqueue(
+            deduplication_key="test:tail",
+            job_id="data",
+            kind="check",
+            mode="full",
+            trigger_source="manual",
+        )
+        lifecycle = ServiceLifecycle(
+            operations=operations,
+            stop_accepting=application.stop_accepting,
+            cancel_executor=application.cancel_executor,
+            wait_executor=application.wait_executor,
+            publish_final_status=lambda: application.publish("stopping"),
+        )
+        await lifecycle.shutdown()
+        state = connection.execute(
+            "SELECT state FROM operations WHERE operation_id = ?",
+            (str(queued.operation_id),),
+        ).fetchone()
+        assert state == ("discarded_on_service_stop",)
+
+    try:
+        asyncio.run(scenario())
+        assert connection.execute(
+            "SELECT result FROM runs ORDER BY started_at"
+        ).fetchone() == ("cancelled",)
+        assert '"manager_state":"stopping"' in (
+            layout.public / "health.json"
+        ).read_text(encoding="utf-8")
     finally:
         connection.close()
