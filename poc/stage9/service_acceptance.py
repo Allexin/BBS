@@ -118,7 +118,11 @@ def main() -> int:
         set_value(nssm, invalid_service, "AppExit", "Default", "Restart")
         set_value(nssm, invalid_service, "AppExit", "40", "Exit")
         set_value(nssm, invalid_service, "AppRestartDelay", "1000")
-        run([str(nssm), "start", invalid_service])
+        # The fixture exits with the intentionally non-restartable config code 40.
+        # On a fast machine NSSM may observe SERVICE_STOPPED before its START command
+        # returns and use a non-zero CLI exit code. The durable attempt count and the
+        # final service status below are the acceptance criteria.
+        run([str(nssm), "start", invalid_service], check=False)
         wait_file(attempts)
         time.sleep(3)
         starts = attempts.read_text(encoding="ascii").splitlines()

@@ -1,7 +1,10 @@
 [CmdletBinding()]
 param(
     [ValidateSet('D')]
-    [string]$TestDrive = 'D'
+    [string]$TestDrive = 'D',
+
+    [ValidateRange(1, 5)]
+    [int]$StartAt = 1
 )
 
 $ErrorActionPreference = 'Stop'
@@ -43,7 +46,10 @@ $failure = $null
 Start-Transcript -LiteralPath $logPath -Force | Out-Null
 try {
     Write-Output "Stage 10 hardware acceptance is restricted to physical disk $($disk.Number), drive $TestDrive."
-    for ($index = 0; $index -lt $steps.Count; $index++) {
+    if ($StartAt -gt 1) {
+        Write-Output "Resuming at step $StartAt; earlier evidence is not rerun."
+    }
+    for ($index = $StartAt - 1; $index -lt $steps.Count; $index++) {
         $step = $steps[$index]
         Write-Output "[$($index + 1)/$($steps.Count)] Starting: $($step.Name)"
         $scriptPath = Join-Path $projectRoot $step.Script
@@ -87,6 +93,7 @@ finally {
         status = $status
         test_drive = $TestDrive
         disk_number = $disk.Number
+        start_at = $StartAt
         started_at = $startedAt.ToString('o')
         finished_at = [DateTimeOffset]::UtcNow.ToString('o')
         completed_steps = @($completed)
