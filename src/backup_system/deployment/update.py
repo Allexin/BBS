@@ -12,6 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from uuid import uuid4
 
+from backup_system.deployment.launchers import install_portable_launchers
 from backup_system.deployment.manifest import load_deployment_manifest, stage_release
 
 SERVICE_RUNNING = "SERVICE_RUNNING"
@@ -77,6 +78,7 @@ def update(
             if not prepared.is_dir():
                 raise UpdateError(f"prepared release is missing {name}")
             replace_tree_contents(prepared, target)
+        install_portable_launchers(stable)
     finally:
         if staging.exists():
             print("[6/7] Removing temporary staging files...", flush=True)

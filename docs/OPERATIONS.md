@@ -15,6 +15,16 @@ invalid manager or job configuration. Bootstrap failures are also appended durab
 `data\logs\bootstrap.jsonl`; exit code `41` means that bootstrap itself or its durable
 diagnostic failed. NSSM is configured not to restart either exit code.
 
+Run local operator commands through the portable launcher in the Stable root:
+
+```bat
+backupctl.bat status
+backupctl.bat run <job-id>
+```
+
+Do not use `.venv\Scripts\backupctl.exe`; uv-generated Windows entry-point
+trampolines may retain the temporary staging path after deployment moves `.venv`.
+
 ## Service lifecycle
 
 The `BBS` service runs as `LocalSystem`. Use an elevated terminal for service control:

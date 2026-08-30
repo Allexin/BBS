@@ -78,6 +78,31 @@ def test_startup_records_missed_fires_without_enqueuing(tmp_path: Path) -> None:
         connection.close()
 
 
+def test_startup_recalculates_next_fire_when_cron_changes(tmp_path: Path) -> None:
+    store, _, connection = _store(tmp_path / "manager.sqlite3")
+    old_schedule = _schedule()
+    now = datetime(2026, 8, 28, 12, tzinfo=UTC)
+    try:
+        store.initialize_new_job("data", old_schedule, now=now)
+        changed = ScheduleConfig.model_validate(
+            {
+                "cron": "0 5 * * 6",
+                "timezone": "UTC",
+                "deadline": "08:00",
+                "cycle": old_schedule.cycle,
+            }
+        )
+        result = store.reconcile_startup(
+            "data", changed, now=datetime(2026, 8, 30, 15, tzinfo=UTC)
+        )
+
+        assert result.missed_at == ()
+        assert result.next_fire_at == datetime(2026, 9, 5, 5, tzinfo=UTC)
+        assert connection.execute("SELECT count(*) FROM scheduler_events").fetchone() == (0,)
+    finally:
+        connection.close()
+
+
 def test_missing_state_requires_recovery_check(tmp_path: Path) -> None:
     store, _, connection = _store(tmp_path / "manager.sqlite3")
     try:

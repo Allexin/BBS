@@ -15,6 +15,7 @@ from ctypes import wintypes
 from pathlib import Path
 from uuid import uuid4
 
+from backup_system.deployment.launchers import install_portable_launchers
 from backup_system.deployment.manifest import load_deployment_manifest, stage_release
 from backup_system.deployment.nssm import configure_service
 from backup_system.deployment.security import apply_stable_acls
@@ -146,6 +147,7 @@ def deploy(
             prepared = staging / name
             if prepared.exists():
                 shutil.move(str(prepared), target)
+        install_portable_launchers(stable)
         switched = True
         initialize_data_layout(RuntimeLayout(stable))
         apply_stable_acls(stable, nginx_account=nginx_account)

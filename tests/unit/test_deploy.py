@@ -10,6 +10,7 @@ from backup_system.deployment.deploy import (
     deploy,
     initialize_stable,
 )
+from backup_system.deployment.launchers import install_portable_launchers
 
 
 def test_deploy_cli_requires_explicit_stable_root() -> None:
@@ -135,6 +136,15 @@ def test_deploy_requires_stopped_switches_preserves_data_and_waits_for_manual_st
     assert calls == ["require-stopped", "prepare", "prepare", "acl", "configure"]
     assert config.read_text(encoding="ascii") == "stable-data"
     assert not (stable / "app/old.txt").exists()
+
+
+def test_portable_backupctl_launcher_uses_stable_relative_python(tmp_path: Path) -> None:
+    install_portable_launchers(tmp_path)
+    assert (tmp_path / "backupctl.bat").read_text(encoding="ascii") == (
+        "@echo off\n"
+        '"%~dp0.venv\\Scripts\\python.exe" -m backup_system.ctl %*\n'
+        "exit /b %errorlevel%\n"
+    )
 
 
 def test_deploy_refuses_to_stop_a_running_service(

@@ -1529,6 +1529,13 @@ retention является стадией только реально выпол
 не перестраивает прошлые слоты; следующая operation вычисляется по новому массиву и
 сохранённому счётчику.
 
+Manager сохраняет fingerprint полей `cron` и `timezone` вместе с scheduler state.
+Если после restart fingerprint изменился, старый `next_fire_at` отбрасывается и
+следующий слот рассчитывается от текущего времени по новой конфигурации. Прошлые
+слоты старого либо нового расписания не считаются downtime и не создают catch-up или
+`schedule_missed`. Изменение только `cycle` fingerprint расписания не меняет и
+`slot_counter` не сбрасывает.
+
 При старте manager собирает все достоверно установленные `schedule_missed` за
 прошедший простой в один компактный Telegram startup report. Детализация зависит от
 важности:
@@ -2940,10 +2947,10 @@ manifest содержит их версии и SHA-256.
 Перенос выполняет отдельный локальный Python deploy script из Dev под обычным
 developer account. Этот script не распространяется пользователям и не управляет
 ACL или Windows service. Для данной локальной машины явно принят trust boundary:
-developer account может изменять Stable `app`, `.venv`, `web` и `data/config`;
+developer account может изменять всё локальное дерево Stable;
 компрометация этого account позволяет подменить код следующего LocalSystem-запуска и
-всю backup-конфигурацию, включая Telegram token. Этот риск явно принят владельцем
-системы. `data/state`, logs и `bin` остаются недоступны для записи. Одноразовый
+всю backup-конфигурацию, включая Telegram token, native tools, state и logs. Этот
+риск явно принят владельцем системы только для Dev-окружения. Одноразовый
 elevated bootstrap отдельно создаёт ACL, устанавливает закреплённые native tools и
 NSSM service; последующие elevated действия — ручные stop/start service.
 
@@ -2958,7 +2965,11 @@ NSSM service; последующие elevated действия — ручные 
    `uv sync --frozen` строго по её lock-файлу. Dev `.venv` никогда не копируется и
    production service её не использует.
 5. Заменяет только содержимое Stable `app`, `.venv` и `web`, не затрагивая `data` и
-   `bin`, затем просит оператора вручную запустить service и ждёт `SERVICE_RUNNING`.
+   `bin`, устанавливает в корне переносимый `backupctl.bat`, затем просит оператора
+   вручную запустить service и ждёт `SERVICE_RUNNING`. Launcher вызывает Stable
+   Python через относительный путь и `python -m backup_system.ctl`; uv-generated
+   console `.exe` не используется, поскольку после переноса `.venv` он может
+   сохранять staging path.
 
 Deploy является наблюдаемой частью developer workflow, а не unattended updater.
 Автоматический или встроенный rollback отсутствует; предыдущая release-копия ради

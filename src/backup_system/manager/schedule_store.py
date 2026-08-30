@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
+from hashlib import sha256
 from typing import Any, cast
 
 from backup_system.common.config import CycleItem, ScheduleConfig
@@ -61,23 +62,32 @@ class ScheduleStore:
     def initialize_new_job(self, job_id: str, schedule: ScheduleConfig, *, now: datetime) -> None:
         timestamp = require_aware(now)
         next_fire = next_cron_fire(schedule, timestamp)
+        fingerprint = _schedule_fingerprint(schedule)
         with self._connection:
             self._connection.execute(
                 """INSERT INTO schedule_state(
                     job_id, slot_counter, recovery_check_required,
-                    last_evaluated_at, next_fire_at, updated_at
-                ) VALUES (?, 0, 0, ?, ?, ?)
+                    last_evaluated_at, next_fire_at, updated_at, schedule_fingerprint
+                ) VALUES (?, 0, 0, ?, ?, ?, ?)
                 ON CONFLICT(job_id) DO NOTHING""",
-                (job_id, timestamp.isoformat(), next_fire.isoformat(), timestamp.isoformat()),
+                (
+                    job_id,
+                    timestamp.isoformat(),
+                    next_fire.isoformat(),
+                    timestamp.isoformat(),
+                    fingerprint,
+                ),
             )
 
     def reconcile_startup(
         self, job_id: str, schedule: ScheduleConfig, *, now: datetime
     ) -> StartupScheduleResult:
         timestamp = require_aware(now)
+        fingerprint = _schedule_fingerprint(schedule)
         with self._connection:
             row = self._connection.execute(
-                """SELECT slot_counter, recovery_check_required, next_fire_at
+                """SELECT slot_counter, recovery_check_required, next_fire_at,
+                    schedule_fingerprint
                 FROM schedule_state WHERE job_id = ?""",
                 (job_id,),
             ).fetchone()
@@ -87,8 +97,8 @@ class ScheduleStore:
                 self._connection.execute(
                     """INSERT INTO schedule_state(
                         job_id, slot_counter, recovery_check_required,
-                        last_evaluated_at, next_fire_at, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?)""",
+                        last_evaluated_at, next_fire_at, updated_at, schedule_fingerprint
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)""",
                     (
                         job_id,
                         cursor.slot_counter,
@@ -96,15 +106,19 @@ class ScheduleStore:
                         timestamp.isoformat(),
                         next_fire.isoformat(),
                         timestamp.isoformat(),
+                        fingerprint,
                     ),
                 )
                 return StartupScheduleResult(True, (), phase_for(schedule, cursor), next_fire)
             cursor = ScheduleCursor(int(row[0]), bool(row[1]))
-            evaluation = evaluate_startup(
-                schedule,
-                stored_next_fire=datetime.fromisoformat(str(row[2])),
-                now=timestamp,
-            )
+            if row[3] != fingerprint:
+                evaluation = CronEvaluation(None, (), next_cron_fire(schedule, timestamp))
+            else:
+                evaluation = evaluate_startup(
+                    schedule,
+                    stored_next_fire=datetime.fromisoformat(str(row[2])),
+                    now=timestamp,
+                )
             self._record_missed(
                 job_id,
                 phase_for(schedule, cursor),
@@ -114,19 +128,20 @@ class ScheduleStore:
             )
             self._connection.execute(
                 """UPDATE schedule_state SET
-                    last_evaluated_at = ?, next_fire_at = ?, updated_at = ?
+                    last_evaluated_at = ?, next_fire_at = ?, updated_at = ?,
+                    schedule_fingerprint = ?
                 WHERE job_id = ?""",
                 (
                     timestamp.isoformat(),
                     evaluation.next_fire_at.isoformat(),
                     timestamp.isoformat(),
+                    fingerprint,
                     job_id,
                 ),
             )
         return StartupScheduleResult(
             False, evaluation.missed_at, phase_for(schedule, cursor), evaluation.next_fire_at
         )
-
     def poll(
         self,
         job_id: str,
@@ -305,3 +320,8 @@ class ScheduleStore:
         if row is None:
             raise RuntimeError(f"schedule state is missing for {job_id}")
         return cast(tuple[Any, ...], row)
+
+
+def _schedule_fingerprint(schedule: ScheduleConfig) -> str:
+    value = f"{schedule.cron}\0{schedule.timezone}".encode()
+    return sha256(value).hexdigest()
