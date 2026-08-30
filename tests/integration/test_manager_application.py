@@ -2,7 +2,7 @@ import asyncio
 from datetime import UTC, datetime
 from pathlib import Path
 
-from backup_system.common.commands import RunCommand, publish_command
+from backup_system.common.commands import CancelCurrentCommand, RunCommand, publish_command
 from backup_system.common.config import ManagerConfig
 from backup_system.common.events import DiskOfflineConfirmed, RunFinished, RunStarted
 from backup_system.common.ids import new_command_id
@@ -73,6 +73,38 @@ class _SuccessfulExecutor:
         return True
 
 
+class _CancellableExecutor:
+    def __init__(self, on_event: object) -> None:
+        self._on_event = on_event
+        self.started = asyncio.Event()
+        self.cancelled = asyncio.Event()
+
+    async def run(self, invocation: object) -> ExecutorProcessResult:
+        now = datetime.now(UTC)
+        callback = self._on_event
+        callback(
+            RunStarted(
+                event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data"
+            )
+        )
+        self.started.set()
+        await self.cancelled.wait()
+        callback(DiskOfflineConfirmed(event="disk_offline_confirmed", timestamp=now))
+        terminal = RunFinished(
+            event="run_finished",
+            timestamp=datetime.now(UTC),
+            result="cancelled",
+            exit_code=29,
+            disk_offline_confirmed=True,
+        )
+        callback(terminal)
+        return ExecutorProcessResult(29, terminal)
+
+    async def cancel_current(self) -> bool:
+        self.cancelled.set()
+        return True
+
+
 def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path) -> None:
     root = tmp_path / "Stable"
     root.mkdir()
@@ -126,5 +158,65 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         assert '"manager_state":"idle"' in health
         assert not tuple(layout.commands_incoming.iterdir())
         assert (layout.commands_completed / f"{command.command_id}.json").is_file()
+    finally:
+        connection.close()
+
+
+def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    operations = OperationsRepository(connection)
+    config = _config()
+    operations.upsert_job(
+        job_id="data", display_name="Data", enabled=True, config_valid=True
+    )
+    executor: _CancellableExecutor | None = None
+
+    def factory(on_event: object, on_stderr: object) -> _CancellableExecutor:
+        nonlocal executor
+        del on_stderr
+        executor = _CancellableExecutor(on_event)
+        return executor
+
+    application = ManagerApplication(
+        layout=layout,
+        config=config,
+        operations=operations,
+        executor_factory=factory,
+    )
+    application.initialize()
+    publish_command(
+        root,
+        RunCommand(
+            command_id=new_command_id(),
+            created_at=datetime.now(UTC),
+            kind="run",
+            job_id="data",
+            operation="backup",
+        ),
+    )
+
+    async def scenario() -> None:
+        assert await application.run_iteration()
+        assert executor is not None
+        await executor.started.wait()
+        cancel = CancelCurrentCommand(
+            command_id=new_command_id(),
+            created_at=datetime.now(UTC),
+            kind="cancel-current",
+        )
+        publish_command(root, cancel)
+        assert not await application.run_iteration()
+        await asyncio.wait_for(executor.cancelled.wait(), timeout=1)
+        await application.wait_executor()
+        assert (layout.commands_completed / f"{cancel.command_id}.json").is_file()
+
+    try:
+        asyncio.run(scenario())
+        assert connection.execute("SELECT result FROM runs").fetchone() == ("cancelled",)
     finally:
         connection.close()
