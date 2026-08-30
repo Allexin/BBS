@@ -87,7 +87,9 @@ def test_runner_drains_both_streams_and_validates_terminal(
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     events: list[object] = []
     diagnostics: list[bytes] = []
-    runner = ExecutorProcessRunner(on_event=events.append, on_stderr=diagnostics.append)
+    runner = ExecutorProcessRunner(
+        on_event=events.append, on_stderr=diagnostics.append, use_job_object=False
+    )
 
     result = asyncio.run(runner.run(_invocation(tmp_path)))
 
@@ -108,7 +110,9 @@ def test_protocol_failure_requests_cancel_and_still_drains(
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
     diagnostics: list[bytes] = []
-    runner = ExecutorProcessRunner(on_event=lambda event: None, on_stderr=diagnostics.append)
+    runner = ExecutorProcessRunner(
+        on_event=lambda event: None, on_stderr=diagnostics.append, use_job_object=False
+    )
 
     with pytest.raises(ExecutorProtocolError):
         asyncio.run(runner.run(_invocation(tmp_path)))
@@ -128,7 +132,9 @@ def test_exit_code_must_match_terminal_event(
         return process
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    runner = ExecutorProcessRunner(on_event=lambda event: None, on_stderr=lambda chunk: None)
+    runner = ExecutorProcessRunner(
+        on_event=lambda event: None, on_stderr=lambda chunk: None, use_job_object=False
+    )
 
     with pytest.raises(ExecutorProcessError, match="conflicts"):
         asyncio.run(runner.run(_invocation(tmp_path)))
@@ -145,7 +151,9 @@ def test_external_cancel_is_sent_only_once(monkeypatch: pytest.MonkeyPatch, tmp_
         return process
 
     monkeypatch.setattr(asyncio, "create_subprocess_exec", spawn)
-    runner = ExecutorProcessRunner(on_event=lambda event: None, on_stderr=lambda chunk: None)
+    runner = ExecutorProcessRunner(
+        on_event=lambda event: None, on_stderr=lambda chunk: None, use_job_object=False
+    )
 
     async def scenario() -> None:
         task = asyncio.create_task(runner.run(_invocation(tmp_path)))
