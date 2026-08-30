@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "application_files": ["pyproject.toml", "uv.lock", "README.md"],
+  "application_trees": ["src"],
+  "web_trees": ["web"],
+  "documentation_trees": ["docs"]
+}
