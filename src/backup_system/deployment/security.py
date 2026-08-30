@@ -136,4 +136,6 @@ def _normalized_dacl(value: str) -> str:
     pattern = re.compile(
         r"\(A;;0x1200a9;;;([^)]+)\)\(A;OICIIO;GXGR;;;\1\)"
     )
-    return pattern.sub(r"(A;OICI;GXGR;;;\1)", normalized)
+    normalized = pattern.sub(r"(A;OICI;GXGR;;;\1)", normalized)
+    # Directory GENERIC_EXECUTE is rendered as FILE_GENERIC_EXECUTE on read-back.
+    return re.sub(r"\(A;;FX;;;([^)]+)\)", r"(A;;GX;;;\1)", normalized)

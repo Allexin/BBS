@@ -23,6 +23,12 @@ def test_readback_normalization_accepts_windows_split_inheritable_read_execute()
     assert _normalized_dacl(actual) == _normalized_dacl(expected)
 
 
+def test_readback_normalization_accepts_file_generic_execute() -> None:
+    expected = "D:P(A;;GX;;;S-1-5-21-123)"
+    actual = "D:PAI(A;;FX;;;S-1-5-21-123)"
+    assert _normalized_dacl(actual) == _normalized_dacl(expected)
+
+
 def test_policy_protects_data_and_limits_public_reader() -> None:
     targets = {item.relative_path: item.sddl for item in stable_acl_targets("S-1-5-21-123")}
     assert ";;;BU)" in targets["."]
