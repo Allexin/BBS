@@ -113,6 +113,7 @@ class TelegramConfig(StrictModel):
 
     _valid_cron = field_validator("daily_report_cron")(ScheduleConfig.validate_cron)
     _valid_timezone = field_validator("daily_report_timezone")(_validate_timezone)
+    _secret_ids = field_validator("token_secret", "chat_id_secret")(_validate_job_id)
 
 
 class ManagerConfig(StrictModel):

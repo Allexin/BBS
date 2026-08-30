@@ -1455,6 +1455,16 @@ telegram:
 
 ```
 
+`token_secret` и `chat_id_secret` являются идентификаторами, а не значениями
+секретов. Каждый идентификатор соответствует файлу
+`Stable\data\config\secrets\<identifier>.dpapi`. Файл содержит только бинарный blob,
+созданный Windows DPAPI с machine scope, и находится под тем же защищённым ACL, что
+и `data\config`. Manager принимает только идентификатор формата job ID, не следует
+symlink/reparse point, ограничивает размер blob и расшифровывает его только в памяти
+процесса. Значение не записывается в SQLite, журналы, public projection, environment
+или command line. Независимая копия Telegram credentials хранится оператором вне
+Stable; DPAPI-файл сам по себе не переносим на другую машину.
+
 Manager валидирует только эту схему. Для каждого enabled `job.id` он отдельно запускает `backup-executor validate --job <id>` и сохраняет результат проверки.
 
 Cron трактуется в указанной IANA timezone. Для одного совпавшего момента создаётся
