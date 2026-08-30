@@ -17,9 +17,10 @@ try {
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
         throw 'Run this one-time native-tool setup from an elevated PowerShell.'
     }
-    $status = (& nssm status $Service 2>&1 | Out-String).Trim()
-    if ($status -ne 'SERVICE_STOPPED') {
-        throw "Service '$Service' must be stopped; current status: $status"
+    $statusText = (& nssm status $Service 2>&1 | Out-String)
+    $status = $statusText -replace '[^A-Z_]', ''
+    if ($status -notmatch 'SERVICE_STOPPED') {
+        throw "Service '$Service' must be stopped; current status: $statusText"
     }
     if (-not (Test-Path $source -PathType Leaf)) {
         throw 'Pinned Dev smartctl 7.5 is missing.'

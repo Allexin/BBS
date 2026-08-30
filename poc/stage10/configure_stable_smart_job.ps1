@@ -8,15 +8,16 @@ $projectRoot = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $pythonPath = Join-Path $projectRoot '.venv\Scripts\python.exe'
 
 try {
-    Write-Output '[1/5] Verifying that the BBS service is stopped.'
-    $status = (& nssm status $Service 2>&1 | Out-String).Trim()
+    Write-Output '[1/4] Verifying that the BBS service is stopped.'
+    $statusText = (& nssm status $Service 2>&1 | Out-String)
     if ($LASTEXITCODE -ne 0) {
         throw "Cannot read service '$Service' status."
     }
-    if ($status -ne 'SERVICE_STOPPED') {
-        throw "Service '$Service' must be stopped; current status: $status"
+    $status = $statusText -replace '[^A-Z_]', ''
+    if ($status -notmatch 'SERVICE_STOPPED') {
+        throw "Service '$Service' must be stopped; current status: $statusText"
     }
-    Write-Output '[2/5] Resolving drive D to one physical disk.'
+    Write-Output '[2/4] Resolving drive D to one physical disk.'
     $partition = Get-Partition -DriveLetter D -ErrorAction Stop
     $disk = $partition | Get-Disk -ErrorAction Stop
     if (@($disk).Count -ne 1 -or $disk.OperationalStatus -notcontains 'Online') {
