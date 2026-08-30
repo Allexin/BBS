@@ -47,23 +47,27 @@ try {
         $step = $steps[$index]
         Write-Output "[$($index + 1)/$($steps.Count)] Starting: $($step.Name)"
         $scriptPath = Join-Path $projectRoot $step.Script
-        $processArguments = @(
-            '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ('"' + $scriptPath + '"')
-        ) + @($step.Arguments)
-        $process = Start-Process powershell.exe -ArgumentList $processArguments -NoNewWindow -PassThru
+        $argumentTail = (@($step.Arguments) | ForEach-Object { '"' + [string]$_ + '"' }) -join ' '
+        $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $processInfo.FileName = 'powershell.exe'
+        $processInfo.Arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$scriptPath`" $argumentTail"
+        $processInfo.UseShellExecute = $false
+        $process = [System.Diagnostics.Process]::Start($processInfo)
+        if ($null -eq $process) {
+            throw "$($step.Name) child process could not be started."
+        }
         $stepStartedAt = [DateTimeOffset]::UtcNow
-        while (-not $process.WaitForExit(10000)) {
+        $nextHeartbeat = 10
+        while (-not $process.HasExited) {
+            Start-Sleep -Seconds 1
             $elapsed = [int]([DateTimeOffset]::UtcNow - $stepStartedAt).TotalSeconds
-            Write-Output "[$($index + 1)/$($steps.Count)] Still running: $($step.Name) ($elapsed seconds)"
+            if ($elapsed -ge $nextHeartbeat) {
+                Write-Output "[$($index + 1)/$($steps.Count)] Still running: $($step.Name) ($elapsed seconds)"
+                $nextHeartbeat += 10
+            }
         }
-        # Windows PowerShell 5.1 may not populate ExitCode after the timed
-        # WaitForExit overload until the parameterless overload completes.
         $process.WaitForExit()
-        $process.Refresh()
         $stepExitCode = $process.ExitCode
-        if ($null -eq $stepExitCode) {
-            throw "$($step.Name) finished without an observable exit code."
-        }
         if ($stepExitCode -ne 0) {
             throw "$($step.Name) failed with exit code $stepExitCode."
         }
