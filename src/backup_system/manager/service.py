@@ -104,7 +104,16 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
         worker = asyncio.create_task(
             _run_manager_loop(application, poll_seconds=config.scheduler.poll_seconds)
         )
-        await lifecycle.wait_for_stop()
+        stop_waiter = asyncio.create_task(lifecycle.wait_for_stop())
+        completed, _ = await asyncio.wait(
+            (worker, stop_waiter), return_when=asyncio.FIRST_COMPLETED
+        )
+        if worker in completed:
+            stop_waiter.cancel()
+            with suppress(asyncio.CancelledError):
+                await stop_waiter
+            await worker
+            raise RuntimeError("manager worker stopped unexpectedly")
         await lifecycle.shutdown()
         worker.cancel()
         with suppress(asyncio.CancelledError):

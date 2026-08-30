@@ -67,6 +67,17 @@ class CommandSpool:
         source.rename(destination)
         return destination
 
+    def mark_rejected(self, command_id: UUID) -> Path:
+        command_id = parse_uuid4(str(command_id))
+        source = self._layout.commands_accepted / f"{command_id}.json"
+        destination = self._layout.commands_rejected / source.name
+        if destination.exists():
+            destination = self._layout.commands_rejected / (
+                f"{source.stem}.{uuid4()}.duplicate{source.suffix}"
+            )
+        source.rename(destination)
+        return destination
+
     def _read_command(self, path: Path) -> LocalCommand:
         if path.is_symlink() or not path.is_file():
             raise SpoolValidationError("command artifact must be a regular file")

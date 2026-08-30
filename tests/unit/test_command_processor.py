@@ -1,7 +1,7 @@
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from backup_system.common.commands import (
     CancelCurrentCommand,
@@ -142,5 +142,50 @@ def test_restore_latest_is_resolved_before_enqueue(tmp_path: Path) -> None:
         assert '"version":"' + "a" * 64 + '"' in request
         assert '"request_id"' in request
         assert '"version":"latest"' not in request
+    finally:
+        connection.close()
+
+
+def test_rejected_command_does_not_block_following_accepted_command(tmp_path: Path) -> None:
+    layout, operations, connection = _runtime(tmp_path)
+    try:
+        rejected = RunCommand(
+            command_id=UUID("00000000-0000-4000-8000-000000000001"),
+            created_at=datetime.now(UTC),
+            kind="run",
+            job_id="data",
+            operation="restore",
+            version="latest",
+            path=".",
+            target=r"D:\Restores",
+        )
+        accepted = RunCommand(
+            command_id=UUID("10000000-0000-4000-8000-000000000001"),
+            created_at=datetime.now(UTC),
+            kind="run",
+            job_id="data",
+            operation="backup",
+        )
+        publish_command(layout.root, rejected)
+        publish_command(layout.root, accepted)
+        spool = CommandSpool(layout)
+        spool.accept_incoming()
+
+        def fail_resolver(job_id: str, version: str) -> str:
+            del job_id, version
+            raise RuntimeError("resolver unavailable")
+
+        outcomes = CommandProcessor(
+            spool,
+            operations,
+            cancel_current=lambda: None,
+            resolve_restore_version=fail_resolver,
+        ).process_accepted()
+        assert [item.disposition for item in outcomes] == [
+            CommandDisposition.REJECTED,
+            CommandDisposition.ENQUEUED,
+        ]
+        assert (layout.commands_rejected / f"{rejected.command_id}.json").is_file()
+        assert (layout.commands_completed / f"{accepted.command_id}.json").is_file()
     finally:
         connection.close()
