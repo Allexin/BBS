@@ -26,6 +26,15 @@ class SecurityBackend(Protocol):
     def apply_and_verify(self, path: Path, sddl: str) -> None: ...
 
 
+def apply_administrative_acl(
+    path: Path, *, backend: SecurityBackend | None = None
+) -> None:
+    if not path.exists() or _is_reparse(path):
+        raise StableAclError("administrative ACL target is missing or unsafe")
+    selected = backend or _Pywin32SecurityBackend()
+    selected.apply_and_verify(path, "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)")
+
+
 def stable_acl_targets(nginx_sid: str) -> tuple[AclTarget, ...]:
     if not nginx_sid.startswith("S-"):
         raise StableAclError("nginx account SID is invalid")
