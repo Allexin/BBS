@@ -1,5 +1,15 @@
 # Corrective acceptance results
 
+## Real manager service
+
+Status: passed on the Stable composition.
+
+- NSSM reached `SERVICE_RUNNING` under LocalSystem;
+- manager published `idle` health/status projections with no bootstrap diagnostics;
+- manual NSSM stop reached `SERVICE_STOPPED` and manager published the final
+  `stopping` projection;
+- the acceptance configuration contained no jobs and accessed no backup disk.
+
 ## Stable ACL policy
 
 Status: pending elevated execution.

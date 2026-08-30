@@ -3,7 +3,10 @@ param(
     [string]$Stable,
 
     [Parameter(Mandatory = $true)]
-    [string]$NginxAccount
+    [string]$NginxAccount,
+
+    [Parameter(Mandatory = $true)]
+    [string]$DeploymentAccount
 )
 
 $ErrorActionPreference = 'Stop'
@@ -12,7 +15,8 @@ $python = Join-Path $repo '.venv\Scripts\python.exe'
 $output = Join-Path $repo '.poc-work\corrective-stable-acl\acl-result.json'
 
 & $python (Join-Path $PSScriptRoot 'apply_stable_acl.py') `
-    --stable $Stable --nginx-account $NginxAccount --output $output
+    --stable $Stable --nginx-account $NginxAccount `
+    --deployment-account $DeploymentAccount --output $output
 if ($LASTEXITCODE -ne 0) {
     throw "Stable ACL step failed with exit code $LASTEXITCODE"
 }

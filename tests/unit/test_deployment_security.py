@@ -63,3 +63,28 @@ def test_acl_application_rejects_missing_public_tree(tmp_path: Path) -> None:
     (stable / "data").mkdir(parents=True)
     with pytest.raises(StableAclError, match="missing"):
         apply_stable_acls(stable, nginx_account="BBS-Web", backend=_Backend())
+
+
+def test_deployment_account_is_limited_to_application_trees(tmp_path: Path) -> None:
+    stable = tmp_path / "Stable"
+    for relative in ("data/public", "app", ".venv", "web"):
+        (stable / relative).mkdir(parents=True)
+
+    class Backend(_Backend):
+        def account_sid_string(self, account: str) -> str:
+            return {
+                "BBS-Web": "S-1-5-21-123",
+                "BBS-Developer": "S-1-5-21-456",
+            }[account]
+
+    backend = Backend()
+    apply_stable_acls(
+        stable,
+        nginx_account="BBS-Web",
+        deployment_account="BBS-Developer",
+        backend=backend,
+    )
+    application = backend.applied[-3:]
+    assert [name for name, _ in application] == ["app", ".venv", "web"]
+    assert all(";;;S-1-5-21-456)" in sddl for _, sddl in application)
+    assert all(";;;S-1-5-21-456)" not in sddl for _, sddl in backend.applied[:-3])

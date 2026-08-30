@@ -2926,25 +2926,26 @@ manifest содержит их версии и SHA-256.
 - Git-controlled Dev directory, где редактируется и тестируется проект;
 - отдельный Stable directory, из которого NSSM запускает production service.
 
-Перенос выполняет отдельный Python deploy script из Dev. Скрипт проверяет, что уже
-запущен с administrative token, а при обычном запуске перезапускает самого себя через
-Windows UAC `runas` и ждёт elevated child result. PowerShell deployment logic и shell
-command construction не используются; NSSM и остальные процессы вызываются через
-`subprocess` со списком аргументов.
+Перенос выполняет отдельный локальный Python deploy script из Dev под обычным
+developer account. Этот script не распространяется пользователям и не управляет
+ACL или Windows service. Для данной локальной машины явно принят trust boundary:
+developer account может изменять только Stable `app`, `.venv` и `web`; компрометация
+этого account позволяет подменить код следующего LocalSystem-запуска. `data` и `bin`
+остаются недоступны для записи. Одноразовый elevated bootstrap отдельно создаёт ACL
+и NSSM service; последующие elevated действия — ручные stop/start service.
 
-Elevated deploy выполняет последовательность:
+Обычный Dev deploy выполняет последовательность:
 
 1. Проверяет source/target identities, Git revision и deployment manifest.
-2. Штатно останавливает NSSM service и ждёт полного cooperative cleanup; если service
-   не остановился, deploy завершается и Stable не изменяет.
+2. Проверяет, что NSSM service уже остановлен оператором; если нет, deploy завершается
+   и Stable не изменяет.
 3. Копирует в staging только явно перечисленный release-состав Dev, не перенося
    `.git`, Dev `.venv`, caches, test artifacts и локальные временные файлы.
 4. Создаёт для подготавливаемой Stable-версии собственную `.venv` и выполняет
    `uv sync --frozen` строго по её lock-файлу. Dev `.venv` никогда не копируется и
-   production service её не использует. Затем запускает config/schema validation и
-   smoke checks до переключения service на новый код.
-5. Заменяет Stable application files подготовленной версией, запускает NSSM service
-   и проверяет его startup health.
+   production service её не использует.
+5. Заменяет только содержимое Stable `app`, `.venv` и `web`, не затрагивая `data` и
+   `bin`, затем просит оператора вручную запустить service и ждёт `SERVICE_RUNNING`.
 
 Deploy является наблюдаемой частью developer workflow, а не unattended updater.
 Автоматический или встроенный rollback отсутствует; предыдущая release-копия ради

@@ -44,28 +44,28 @@ native tools in `bin`, and an approved NSSM executable. From Dev run:
 python -m backup_system.deployment.deploy --stable C:\BackupSystem\Stable --nginx-account <service-account>
 ```
 
-For the corrective rollout, run the guarded wrapper from an elevated PowerShell:
+For ordinary subsequent updates, stop BBS from an elevated terminal and then run
+the guarded wrapper from a normal Dev PowerShell:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_stable_update.ps1 -Stable C:\BackupSystem\Stable -NginxAccount <service-account>
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_stable_update.ps1 -Stable S:\BasovBackupSystem\BBS_Stable
 ```
 
-The wrapper requires an approved `nssm.exe` in the elevated PATH. It looks for uv in
+The wrapper requires an approved `nssm.exe` in PATH. It looks for uv in
 Dev `.venv\Scripts\uv.exe`, `.poc-work\tools\uv\uv.exe`, and then PATH.
-For the first deployment only, add `-Initialize`. This creates the root marker and
-minimal disabled-job manager/SMART configs only when all three files are absent; it
-does not overwrite an existing Telegram credentials file.
-
-The tool requests UAC elevation and refuses to proceed unless the service is already
-stopped. It copies only the release manifest, builds a new frozen non-editable `.venv`,
-validates Stable config, switches application files, and verifies NSSM settings. It
-then asks the operator to start the service manually and waits for `SERVICE_RUNNING`. Stable
+It refuses to proceed unless the service is already stopped, copies only the release
+manifest, and builds a new frozen non-editable `.venv`. It replaces only the contents
+of `app`, `.venv`, and `web`, then asks the operator to start the service manually and
+waits for `SERVICE_RUNNING`. Stable
 `data` and `bin` are never replaced. Dirty Dev files are deployed as-is and the Git
 revision is reported for traceability.
 
 `--nginx-account` is mandatory and must name the Windows account used by nginx.
-Deployment protects Stable and `data`, grants that account read access only to
-`data\public`, and verifies the resulting DACL before BBS is started.
+One-time administrative bootstrap protects Stable and `data`, grants the nginx
+account read access only to `data\public`, and grants the explicitly trusted local
+developer account write access only to `app`, `.venv`, and `web`. This trust boundary
+allows that account to replace code later executed as LocalSystem and is specific to
+this local Dev workflow.
 
 There is no automatic rollback. A failure after the switch leaves the new files and
 the actual stopped/failed service state visible. Correct the cause and deploy again.

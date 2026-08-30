@@ -54,6 +54,7 @@ def apply_stable_acls(
     stable: Path,
     *,
     nginx_account: str,
+    deployment_account: str | None = None,
     backend: SecurityBackend | None = None,
 ) -> None:
     root = stable.absolute()
@@ -71,6 +72,17 @@ def apply_stable_acls(
         if not path.is_dir() or _is_reparse(path):
             raise StableAclError(f"ACL target is missing or unsafe: {target.relative_path}")
         selected.apply_and_verify(path, target.sddl)
+    if deployment_account is not None:
+        deployment_sid = selected.account_sid_string(deployment_account)
+        application_sddl = (
+            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
+            f"(A;OICI;FA;;;{deployment_sid})"
+        )
+        for name in ("app", ".venv", "web"):
+            path = root / name
+            if not path.is_dir() or _is_reparse(path):
+                raise StableAclError(f"application ACL target is missing or unsafe: {name}")
+            selected.apply_and_verify(path, application_sddl)
 
 
 class _Pywin32SecurityBackend:

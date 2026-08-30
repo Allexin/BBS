@@ -14,6 +14,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--stable", type=Path, required=True)
     parser.add_argument("--nginx-account", required=True)
+    parser.add_argument("--deployment-account", required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result: dict[str, object] = {"schema_version": 1, "passed": False}
@@ -21,7 +22,11 @@ def main() -> int:
         if not bool(ctypes.windll.shell32.IsUserAnAdmin()):
             raise RuntimeError("ACL application requires an elevated terminal")
         stable = args.stable.resolve(strict=True)
-        apply_stable_acls(stable, nginx_account=args.nginx_account)
+        apply_stable_acls(
+            stable,
+            nginx_account=args.nginx_account,
+            deployment_account=args.deployment_account,
+        )
         result.update(passed=True, stable=str(stable))
     except Exception as error:
         result["error"] = str(error)

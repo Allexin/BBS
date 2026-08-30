@@ -2,22 +2,10 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$Stable,
 
-    [Parameter(Mandatory = $true)]
-    [string]$NginxAccount,
-
-    [string]$Service = 'BBS',
-
-    [switch]$Initialize
+    [string]$Service = 'BBS'
 )
 
 $ErrorActionPreference = 'Stop'
-$identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-$principal = [Security.Principal.WindowsPrincipal]::new($identity)
-$adminRole = [Security.Principal.WindowsBuiltInRole]::Administrator
-if (-not $principal.IsInRole($adminRole)) {
-    throw 'Run this script from an elevated PowerShell.'
-}
-
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 $python = Join-Path $repo '.venv\Scripts\python.exe'
 $nssm = (Get-Command nssm.exe -CommandType Application -ErrorAction Stop).Source
@@ -38,17 +26,13 @@ if ([string]::IsNullOrWhiteSpace($uv)) {
 }
 
 $deployArguments = @(
-    '-m', 'backup_system.deployment.deploy',
+    '-m', 'backup_system.deployment.update',
     '--source', $repo,
     '--stable', $Stable,
     '--service', $Service,
-    '--nginx-account', $NginxAccount,
     '--nssm', $nssm,
     '--uv', $uv
 )
-if ($Initialize) {
-    $deployArguments += '--initialize'
-}
 
 & $python @deployArguments
 
