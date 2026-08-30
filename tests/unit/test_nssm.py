@@ -6,8 +6,8 @@ import pytest
 
 from backup_system.deployment.nssm import (
     INFINITE_WINDOWS_WAIT_MS,
-    NssmConfigurationError,
     STOP_METHOD_SKIP,
+    NssmConfigurationError,
     configure_service,
     service_settings,
 )
