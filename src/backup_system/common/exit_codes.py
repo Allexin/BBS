@@ -17,3 +17,10 @@ class ExecutorExitCode(IntEnum):
     DISK_OFFLINE_FAILED = 28
     CANCELLED = 29
     INTERNAL_ERROR = 30
+
+
+class ManagerExitCode(IntEnum):
+    SUCCESS = 0
+    CONFIG_INVALID = 40
+    BOOTSTRAP_ERROR = 41
+    INTERNAL_ERROR = 42

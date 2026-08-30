@@ -6,7 +6,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from backup_system.common.config_io import ConfigLoadError, validate_config_tree
-from backup_system.common.exit_codes import ExecutorExitCode
+from backup_system.common.exit_codes import ManagerExitCode
+from backup_system.manager.bootstrap import write_bootstrap_failure
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,10 +19,22 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv: Sequence[str] | None = None) -> int:
     arguments = build_parser().parse_args(argv)
-    if arguments.validate_only:
+    config_path = Path(arguments.config)
+    try:
+        validate_config_tree(config_path)
+    except ConfigLoadError as error:
+        diagnostic = str(error)
+        print(diagnostic, file=sys.stderr)
         try:
-            validate_config_tree(Path(arguments.config))
-        except ConfigLoadError as error:
-            print(str(error), file=sys.stderr)
-            return ExecutorExitCode.CONFIG_INVALID
-    return 0
+            write_bootstrap_failure(
+                config_path,
+                exit_code=int(ManagerExitCode.CONFIG_INVALID),
+                diagnostic=diagnostic,
+            )
+        except (OSError, ValueError) as log_error:
+            print(f"cannot persist bootstrap diagnostic: {log_error}", file=sys.stderr)
+            return ManagerExitCode.BOOTSTRAP_ERROR
+        return ManagerExitCode.CONFIG_INVALID
+    if arguments.validate_only:
+        return ManagerExitCode.SUCCESS
+    return ManagerExitCode.SUCCESS
