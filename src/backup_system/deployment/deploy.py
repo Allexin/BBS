@@ -17,6 +17,7 @@ from uuid import uuid4
 
 from backup_system.deployment.manifest import load_deployment_manifest, stage_release
 from backup_system.deployment.nssm import configure_service
+from backup_system.deployment.security import apply_stable_acls
 
 SERVICE_STOPPED = "SERVICE_STOPPED"
 SERVICE_RUNNING = "SERVICE_RUNNING"
@@ -54,13 +55,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--source", type=Path, default=Path.cwd())
     parser.add_argument("--stable", type=Path, required=True)
     parser.add_argument("--service", default="BBS")
+    parser.add_argument("--nginx-account", required=True)
     parser.add_argument("--nssm", type=Path)
     parser.add_argument("--uv", type=Path)
     return parser
 
 
 def deploy(
-    *, source: Path, stable: Path, service_name: str, nssm: Path, uv: Path
+    *,
+    source: Path,
+    stable: Path,
+    service_name: str,
+    nginx_account: str,
+    nssm: Path,
+    uv: Path,
 ) -> str:
     source = source.resolve(strict=True)
     stable = stable.resolve(strict=True)
@@ -100,6 +108,8 @@ def deploy(
             if prepared.exists():
                 shutil.move(str(prepared), target)
         switched = True
+        (stable / "data" / "public").mkdir(parents=True, exist_ok=True)
+        apply_stable_acls(stable, nginx_account=nginx_account)
         configure_service(nssm=nssm, service_name=service_name, root=stable)
         _run_checked([str(nssm), "start", service_name])
         _wait_for_status(nssm, service_name, SERVICE_RUNNING, attempts=30)
@@ -226,6 +236,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             source=arguments.source,
             stable=arguments.stable,
             service_name=arguments.service,
+            nginx_account=arguments.nginx_account,
             nssm=nssm,
             uv=uv,
         )

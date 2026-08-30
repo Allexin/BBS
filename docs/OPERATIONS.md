@@ -41,7 +41,7 @@ Stable must already contain `backup-system.root`, `data\config\manager.yaml`, pi
 native tools in `bin`, and an approved NSSM executable. From Dev run:
 
 ```powershell
-python -m backup_system.deployment.deploy --stable C:\BackupSystem\Stable
+python -m backup_system.deployment.deploy --stable C:\BackupSystem\Stable --nginx-account <service-account>
 ```
 
 The tool requests UAC elevation, waits for cooperative service stop, copies only the
@@ -49,6 +49,10 @@ release manifest, builds a new frozen non-editable `.venv`, validates Stable con
 switches application files, verifies NSSM settings, and starts the service. Stable
 `data` and `bin` are never replaced. Dirty Dev files are deployed as-is and the Git
 revision is reported for traceability.
+
+`--nginx-account` is mandatory and must name the Windows account used by nginx.
+Deployment protects Stable and `data`, grants that account read access only to
+`data\public`, and verifies the resulting DACL before BBS is started.
 
 There is no automatic rollback. A failure after the switch leaves the new files and
 the actual stopped/failed service state visible. Correct the cause and deploy again.

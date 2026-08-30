@@ -8,7 +8,9 @@ from backup_system.deployment.deploy import DeploymentError, build_parser, deplo
 
 
 def test_deploy_cli_requires_explicit_stable_root() -> None:
-    parsed = build_parser().parse_args(["--stable", r"C:\BackupSystem\Stable"])
+    parsed = build_parser().parse_args(
+        ["--stable", r"C:\BackupSystem\Stable", "--nginx-account", "BBS-Web"]
+    )
     assert parsed.stable == Path(r"C:\BackupSystem\Stable")
 
 
@@ -21,6 +23,7 @@ def test_deploy_rejects_nested_dev_and_stable_before_commands(tmp_path: Path) ->
             source=source,
             stable=stable,
             service_name="BBS-Test",
+            nginx_account="BBS-Web",
             nssm=tmp_path / "nssm.exe",
             uv=tmp_path / "uv.exe",
         )
@@ -36,6 +39,7 @@ def test_deploy_requires_existing_stable_marker(tmp_path: Path) -> None:
             source=source,
             stable=stable,
             service_name="BBS-Test",
+            nginx_account="BBS-Web",
             nssm=tmp_path / "nssm.exe",
             uv=tmp_path / "uv.exe",
         )
@@ -90,18 +94,24 @@ def test_deploy_stops_switches_preserves_data_and_restarts(
     monkeypatch.setattr(deploy_module, "_stop_service_if_installed", stop)
     monkeypatch.setattr(deploy_module, "_run_checked", command)
     monkeypatch.setattr(deploy_module, "configure_service", configure)
+    monkeypatch.setattr(
+        deploy_module,
+        "apply_stable_acls",
+        lambda stable, nginx_account: calls.append("acl"),
+    )
     monkeypatch.setattr(deploy_module, "_wait_for_status", lambda *args, **kwargs: None)
 
     revision = deploy(
         source=source,
         stable=stable,
         service_name="BBS-Test",
+        nginx_account="BBS-Web",
         nssm=tmp_path / "nssm.exe",
         uv=tmp_path / "uv.exe",
     )
 
     assert revision == "a" * 40
-    assert calls == ["stop", "prepare", "prepare", "configure", "start"]
+    assert calls == ["stop", "prepare", "prepare", "acl", "configure", "start"]
     assert config.read_text(encoding="ascii") == "stable-data"
     assert not (stable / "app/old.txt").exists()
 
