@@ -78,8 +78,15 @@ class _Pywin32SecurityBackend:
             expected = security.ConvertStringSecurityDescriptorToSecurityDescriptor(
                 sddl, security.SDDL_REVISION_1
             )
-            security.SetFileSecurity(
-                str(path), security.DACL_SECURITY_INFORMATION, expected
+            security.SetNamedSecurityInfo(
+                str(path),
+                security.SE_FILE_OBJECT,
+                security.DACL_SECURITY_INFORMATION
+                | security.PROTECTED_DACL_SECURITY_INFORMATION,
+                None,
+                None,
+                expected.GetSecurityDescriptorDacl(),
+                None,
             )
             actual = security.GetFileSecurity(str(path), security.DACL_SECURITY_INFORMATION)
             expected_text = security.ConvertSecurityDescriptorToStringSecurityDescriptor(
@@ -91,7 +98,10 @@ class _Pywin32SecurityBackend:
         except OSError as error:
             raise StableAclError(f"cannot apply ACL to {path.name}") from error
         if actual_text != expected_text:
-            raise StableAclError(f"ACL read-back mismatch for {path.name}")
+            raise StableAclError(
+                f"ACL read-back mismatch for {path.name}; "
+                f"expected={expected_text!r}; actual={actual_text!r}"
+            )
 
 
 def _is_reparse(path: Path) -> bool:
