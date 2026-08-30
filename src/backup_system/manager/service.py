@@ -3,18 +3,22 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import signal
 from collections.abc import Awaitable, Callable
 from contextlib import suppress
+from datetime import datetime
 from pathlib import Path
 
 from backup_system.common.config import ManagerConfig
 from backup_system.common.config_io import validate_job_with_owner
+from backup_system.common.time import utc_now
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
+from backup_system.manager.public_projection import HealthProjection
 
 AsyncCallback = Callable[[], Awaitable[None]]
 
@@ -70,7 +74,8 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
                 enabled=job.enabled,
                 config_valid=True,
             )
-        operations.reconcile_startup()
+        previous_seen_at = _previous_manager_seen(layout, fallback=utc_now())
+        reconciliation = operations.reconcile_startup()
 
         application = ManagerApplication(
             layout=layout,
@@ -82,6 +87,10 @@ async def run_service(config_path: Path, config: ManagerConfig) -> None:
             },
         )
         application.initialize()
+        application.plan_startup_report(
+            previous_seen_at=previous_seen_at,
+            interrupted=tuple(str(run_id) for run_id in reconciliation.interrupted_run_ids),
+        )
         await application.publish("starting")
 
         lifecycle = ServiceLifecycle(
@@ -124,3 +133,13 @@ async def _run_manager_loop(
         await application.publish("running" if executed else "idle")
         if not executed:
             await asyncio.sleep(poll_seconds)
+
+
+def _previous_manager_seen(layout: RuntimeLayout, *, fallback: datetime) -> datetime:
+    try:
+        value = HealthProjection.model_validate_json(
+            (layout.public / "health.json").read_text(encoding="utf-8")
+        )
+    except (OSError, ValueError, json.JSONDecodeError):
+        return fallback
+    return value.generated_at

@@ -1,9 +1,13 @@
 import asyncio
+import json
+from datetime import UTC, datetime
 from pathlib import Path
+from uuid import uuid4
 
 from backup_system.manager.database import open_manager_database
+from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
 from backup_system.manager.operations import OperationsRepository, OperationState
-from backup_system.manager.service import ServiceLifecycle
+from backup_system.manager.service import ServiceLifecycle, _previous_manager_seen
 
 
 def test_service_stop_discards_tail_before_cooperative_cleanup(tmp_path: Path) -> None:
@@ -64,3 +68,27 @@ def test_stop_request_wakes_service_waiter(tmp_path: Path) -> None:
 
     asyncio.run(scenario())
     connection.close()
+
+
+def test_previous_manager_seen_comes_from_last_atomic_health(tmp_path: Path) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    observed = datetime(2026, 8, 30, 10, tzinfo=UTC)
+    (layout.public / "health.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "generation_id": str(uuid4()),
+                "generated_at": observed.isoformat(),
+                "manager_state": "idle",
+                "manager_started_at": observed.isoformat(),
+                "version": "0.1.0",
+            }
+        ),
+        encoding="utf-8",
+    )
+    fallback = datetime(2026, 8, 30, 12, tzinfo=UTC)
+    assert _previous_manager_seen(layout, fallback=fallback) == observed

@@ -7,6 +7,7 @@ import json
 import os
 import sys
 from collections.abc import Callable
+from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
 
@@ -30,6 +31,7 @@ from backup_system.manager.schedule_store import ScheduleStore
 from backup_system.manager.scheduler_events import SchedulerEventRepository
 from backup_system.manager.smart_history import SmartHistoryRepository
 from backup_system.manager.spool import CommandSpool
+from backup_system.manager.startup_reports import StartupReportPlanner
 
 
 class ExecutorTransport(Protocol):
@@ -92,6 +94,7 @@ class ManagerApplication:
         )
         self._deadlines = DeadlineMonitor(connection, notifications)
         self._daily_reports = DailyReportStore(connection, notifications)
+        self._startup_reports = StartupReportPlanner(connection, notifications)
         self._smart = ExecutorEventIngestor(
             SmartHistoryRepository(connection, notifications)
         )
@@ -119,6 +122,18 @@ class ManagerApplication:
 
     def stop_accepting(self) -> None:
         self._accepting = False
+
+    def plan_startup_report(
+        self,
+        *,
+        previous_seen_at: datetime,
+        interrupted: tuple[str, ...],
+    ) -> None:
+        self._startup_reports.enqueue(
+            started_at=self._started_at,
+            previous_seen_at=previous_seen_at,
+            interrupted=interrupted,
+        )
 
     async def publish(
         self, state: Literal["starting", "idle", "running", "stopping", "error"]
