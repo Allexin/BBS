@@ -56,8 +56,16 @@ try {
             $elapsed = [int]([DateTimeOffset]::UtcNow - $stepStartedAt).TotalSeconds
             Write-Output "[$($index + 1)/$($steps.Count)] Still running: $($step.Name) ($elapsed seconds)"
         }
-        if ($process.ExitCode -ne 0) {
-            throw "$($step.Name) failed with exit code $($process.ExitCode)."
+        # Windows PowerShell 5.1 may not populate ExitCode after the timed
+        # WaitForExit overload until the parameterless overload completes.
+        $process.WaitForExit()
+        $process.Refresh()
+        $stepExitCode = $process.ExitCode
+        if ($null -eq $stepExitCode) {
+            throw "$($step.Name) finished without an observable exit code."
+        }
+        if ($stepExitCode -ne 0) {
+            throw "$($step.Name) failed with exit code $stepExitCode."
         }
         $completed.Add([string]$step.Name)
         Write-Output "[$($index + 1)/$($steps.Count)] Passed: $($step.Name)"
