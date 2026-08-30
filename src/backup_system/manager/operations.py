@@ -7,6 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal, cast
 from uuid import UUID
 
 from backup_system.common.ids import new_operation_id, new_run_id
@@ -64,6 +65,7 @@ class ClaimedRun:
     kind: str
     mode: str | None
     request: dict[str, object] | None
+    trigger_source: Literal["scheduled", "manual"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,7 +230,7 @@ class OperationsRepository:
             latch = SafetyLatchRepository(self._connection).active()
             if latch is None:
                 row = self._connection.execute(
-                    """SELECT operation_id, job_id, kind, mode, request_json
+                    """SELECT operation_id, job_id, kind, mode, request_json, trigger_source
                     FROM operations WHERE state = ?
                     ORDER BY CASE trigger_source WHEN 'manual' THEN 0 ELSE 1 END,
                              queued_at, rowid LIMIT 1""",
@@ -236,7 +238,8 @@ class OperationsRepository:
                 ).fetchone()
             else:
                 row = self._connection.execute(
-                    """SELECT operation_id, job_id, kind, mode, request_json FROM operations
+                    """SELECT operation_id, job_id, kind, mode, request_json,
+                        trigger_source FROM operations
                     WHERE state = ? AND job_id = ? AND kind = 'recover'
                         AND trigger_source = 'manual'
                     ORDER BY queued_at, rowid LIMIT 1""",
@@ -250,6 +253,10 @@ class OperationsRepository:
             kind = str(row[2])
             mode = str(row[3]) if row[3] is not None else None
             request = json.loads(str(row[4])) if row[4] is not None else None
+            trigger_source_value = str(row[5])
+            if trigger_source_value not in {"scheduled", "manual"}:
+                raise StateTransitionError("operation has an invalid trigger source")
+            trigger_source = cast(Literal["scheduled", "manual"], trigger_source_value)
             cursor = self._connection.execute(
                 "UPDATE operations SET state = ? WHERE operation_id = ? AND state = ?",
                 (OperationState.RUNNING, str(operation_id), OperationState.QUEUED),
@@ -285,7 +292,7 @@ class OperationsRepository:
         except BaseException:
             self._connection.rollback()
             raise
-        return ClaimedRun(run_id, operation_id, job_id, kind, mode, request)
+        return ClaimedRun(run_id, operation_id, job_id, kind, mode, request, trigger_source)
 
     def update_stage(self, run_id: UUID, stage: str, *, changed_at: datetime | None = None) -> None:
         if not stage:

@@ -108,7 +108,12 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
     )
     publish_command(root, command)
     try:
-        assert asyncio.run(application.run_iteration()) is True
+        async def execute() -> bool:
+            started = await application.run_iteration()
+            await application.wait_executor()
+            return started
+
+        assert asyncio.run(execute()) is True
         assert len(invocations) == 1
         assert invocations[0].operation == "run"
         assert connection.execute(

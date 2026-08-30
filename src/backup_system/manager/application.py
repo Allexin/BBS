@@ -112,6 +112,7 @@ class ManagerApplication:
         task = self._active_task
         if task is not None:
             await task
+            self._active_task = None
 
     async def run_iteration(self) -> bool:
         """Perform one bounded manager iteration; return whether a run was executed."""
@@ -129,13 +130,18 @@ class ManagerApplication:
                     )
         if not self._accepting:
             return False
+        if self._active_task is not None:
+            if not self._active_task.done():
+                return False
+            await self._active_task
+            self._active_task = None
         claimed = self._operations.claim_next()
         if claimed is None:
             return False
         self._active_task = asyncio.create_task(self._execute(claimed))
-        try:
+        await asyncio.sleep(0)
+        if self._active_task.done():
             await self._active_task
-        finally:
             self._active_task = None
         return True
 
@@ -166,7 +172,8 @@ class ManagerApplication:
                 mode=claimed.mode,
                 request_file=request_file,
             )
-            await executor.run(invocation)
+            result = await executor.run(invocation)
+            self._record_schedule_completion(claimed, result)
         except Exception as error:
             self._write_executor_diagnostic(
                 f"manager classified executor failure: {type(error).__name__}\n".encode("ascii")
@@ -192,6 +199,22 @@ class ManagerApplication:
             stream.flush()
             os.fsync(stream.fileno())
         return path.resolve()
+
+    def _record_schedule_completion(
+        self, claimed: ClaimedRun, result: ExecutorProcessResult
+    ) -> None:
+        job = next((item for item in self._config.jobs if item.id == claimed.job_id), None)
+        if job is None:
+            return
+        self._schedules.record_completion(
+            claimed.job_id,
+            job.schedule,
+            result=result.terminal_event.result,
+            trigger_source=claimed.trigger_source,
+            operation=claimed.kind,
+            check_mode=claimed.mode,
+            completed_at=result.terminal_event.timestamp,
+        )
 
     def _write_executor_diagnostic(self, chunk: bytes) -> None:
         path = self._layout.logs / "executor-stderr.log"
