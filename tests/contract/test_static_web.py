@@ -40,3 +40,9 @@ def test_status_ui_labels_missing_disk_identity_fields() -> None:
     assert 'value ?? "not reported"' not in script
     assert "Manufacturer: ${dash(disk.manufacturer)}" in script
     assert "Capacity: ${formatBytes(disk.capacity_bytes)}" in script
+
+
+def test_status_ui_shows_active_job_heartbeat_in_job_card() -> None:
+    script = (WEB / "status.js").read_text(encoding="utf-8")
+    assert 'addFact(facts,"Current status",operationStatus(current))' in script
+    assert "heartbeat ${age(progress.updated_at)}" in script

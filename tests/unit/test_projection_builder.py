@@ -156,6 +156,45 @@ def test_builder_uses_unknown_instead_of_inventing_missing_data(tmp_path: Path) 
         connection.close()
 
 
+def test_running_operation_exposes_job_id_and_progress_heartbeat(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    now = datetime(2026, 8, 28, 12, tzinfo=UTC)
+    try:
+        operations = OperationsRepository(connection)
+        operations.upsert_job(
+            job_id="data", display_name="Data", enabled=True, config_valid=True
+        )
+        operations.enqueue(
+            deduplication_key="data:running",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+            queued_at=now - timedelta(minutes=2),
+        )
+        run = operations.claim_next(started_at=now - timedelta(minutes=1))
+        assert run is not None
+        operations.update_stage(run.run_id, "backing_up", changed_at=now)
+        operations.update_progress(
+            run.run_id,
+            files_done=927,
+            files_total=11551,
+            bytes_done=11351492,
+            bytes_total=422964384,
+            updated_at=now,
+        )
+        status, _ = ProjectionBuilder(connection).build(
+            now=now, manager_started_at=now, manager_state="running", version="test"
+        )
+        operation = status.operations[0]
+        assert operation.job_id == "data"
+        assert operation.stage == "backing_up"
+        assert operation.progress is not None
+        assert operation.progress.files_done == 927
+        assert operation.progress.updated_at == now
+    finally:
+        connection.close()
+
+
 def test_active_safety_latch_is_critical_and_explains_queued_work(tmp_path: Path) -> None:
     connection = open_manager_database(tmp_path / "manager.sqlite3")
     now = datetime(2026, 8, 28, tzinfo=UTC)

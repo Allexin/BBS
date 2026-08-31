@@ -129,8 +129,9 @@ class ProjectionBuilder:
     def _operations(self, now: datetime) -> tuple[PublicOperation, ...]:
         latch = SafetyLatchRepository(self._connection).active()
         rows = self._connection.execute(
-            """SELECT operations.operation_id, jobs.display_name, operations.kind,
-                operations.trigger_source, operations.state, operations.queued_at,
+            """SELECT operations.operation_id, operations.job_id, jobs.display_name,
+                operations.kind, operations.trigger_source, operations.state,
+                operations.queued_at,
                 runs.stage, runs.started_at, runs.progress_updated_at,
                 runs.files_done, runs.files_total, runs.bytes_done, runs.bytes_total
             FROM operations JOIN jobs ON jobs.job_id = operations.job_id
@@ -142,31 +143,32 @@ class ProjectionBuilder:
         ).fetchall()
         result: list[PublicOperation] = []
         for position, row in enumerate(rows):
-            running = str(row[4]) == "running"
-            since = datetime.fromisoformat(str(row[7] if running else row[5]))
+            running = str(row[5]) == "running"
+            since = datetime.fromisoformat(str(row[8] if running else row[6]))
             progress = None
-            if running and any(value is not None for value in row[9:13]):
+            if running and any(value is not None for value in row[10:14]):
                 progress = PublicProgress(
-                    files_done=row[9],
-                    files_total=row[10],
-                    bytes_done=row[11],
-                    bytes_total=row[12],
-                    updated_at=datetime.fromisoformat(str(row[8])) if row[8] else None,
+                    files_done=row[10],
+                    files_total=row[11],
+                    bytes_done=row[12],
+                    bytes_total=row[13],
+                    updated_at=datetime.fromisoformat(str(row[9])) if row[9] else None,
                 )
             result.append(
                 PublicOperation(
                     operation_id=UUID(str(row[0])),
+                    job_id=str(row[1]),
                     position=position,
-                    job_display_name=str(row[1]),
-                    kind=str(row[2]),
-                    trigger_source=cast(Literal["scheduled", "manual"], str(row[3])),
+                    job_display_name=str(row[2]),
+                    kind=str(row[3]),
+                    trigger_source=cast(Literal["scheduled", "manual"], str(row[4])),
                     state="running" if running else "queued",
-                    stage=str(row[6]) if row[6] is not None else None,
+                    stage=str(row[7]) if row[7] is not None else None,
                     elapsed_seconds=max(0, int((now - since).total_seconds())),
                     executor_state="running" if running else "not_started",
                     blocked_reason=(
                         f"Blocked by disk safety latch for {latch.job_id}; recovery required"
-                        if not running and latch is not None and str(row[2]) != "recover"
+                        if not running and latch is not None and str(row[3]) != "recover"
                         else None
                     ),
                     progress=progress,

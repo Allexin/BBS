@@ -66,6 +66,7 @@ class PublicProgress(PublicModel):
 
 class PublicOperation(PublicModel):
     operation_id: UUID
+    job_id: str
     position: int = Field(ge=0)
     job_display_name: str
     kind: str
