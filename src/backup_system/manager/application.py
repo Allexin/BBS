@@ -10,10 +10,21 @@ from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
+from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from backup_system import __version__
 from backup_system.common.config import ManagerConfig, SmartConfig
-from backup_system.common.events import KnownExecutorEvent, UnknownExecutorEvent
+from backup_system.common.events import (
+    DiskOfflineFailed,
+    KnownExecutorEvent,
+    Progress,
+    RunFinished,
+    SmartObserved,
+    SmartTestDiskFinished,
+    StageChanged,
+    UnknownExecutorEvent,
+)
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.time import utc_now
 from backup_system.manager.command_processor import CommandProcessor
@@ -22,7 +33,9 @@ from backup_system.manager.deadlines import DeadlineMonitor, deadline_for
 from backup_system.manager.executor_events import ExecutorEventIngestor, ExecutorRunEventProcessor
 from backup_system.manager.executor_process import ExecutorProcessResult, ExecutorProcessRunner
 from backup_system.manager.executor_protocol import ExecutorInvocation
+from backup_system.manager.journal import JournalWriter, Severity
 from backup_system.manager.layout import RuntimeLayout
+from backup_system.manager.log_projection import LogProjectionPublisher
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import ClaimedRun, OperationsRepository, RunResult
 from backup_system.manager.projection_builder import ProjectionBuilder
@@ -72,12 +85,18 @@ class ManagerApplication:
         job_protection_info: dict[str, str] | None = None,
         notification_dispatcher: AsyncNotificationDispatcher | None = None,
         smart_config: SmartConfig | None = None,
+        journal: JournalWriter | None = None,
+        log_projection: LogProjectionPublisher | None = None,
     ) -> None:
         self._layout = layout
         self._config = config
         self._operations = operations
         self._executor_factory = executor_factory
         self._notification_dispatcher = notification_dispatcher
+        self._journal = journal
+        self._log_projection = log_projection
+        self._journal_timezone = ZoneInfo(config.timezone)
+        self._job_display_names = {job.id: job.display_name for job in config.jobs}
         self._accepting = True
         self._active_executor: ExecutorTransport | None = None
         self._active_task: asyncio.Task[None] | None = None
@@ -158,6 +177,28 @@ class ManagerApplication:
             interrupted=interrupted,
         )
 
+    def journal_startup_interruptions(self, run_ids: tuple[str, ...]) -> None:
+        for run_id_text in run_ids:
+            row = self._operations.connection.execute(
+                """SELECT runs.operation_id, runs.run_id, runs.job_id, operations.kind
+                FROM runs JOIN operations ON operations.operation_id = runs.operation_id
+                WHERE runs.run_id = ?""",
+                (run_id_text,),
+            ).fetchone()
+            if row is None:
+                continue
+            self._write_journal(
+                severity="error",
+                event="run_interrupted",
+                operation_id=UUID(str(row[0])),
+                run_id=UUID(str(row[1])),
+                job_id=str(row[2]),
+                details={
+                    "operation_kind": str(row[3]),
+                    "public_reason": "Run interrupted by manager restart",
+                },
+            )
+
     async def publish(
         self, state: Literal["starting", "idle", "running", "stopping", "error"]
     ) -> None:
@@ -233,6 +274,14 @@ class ManagerApplication:
         if claimed is None:
             return False
         self._assign_deadline(claimed)
+        self._write_journal(
+            severity="info",
+            event="operation_started",
+            operation_id=claimed.operation_id,
+            run_id=claimed.run_id,
+            job_id=claimed.job_id,
+            details={"operation_kind": claimed.kind},
+        )
         self._active_task = asyncio.create_task(self._execute(claimed))
         await asyncio.sleep(0)
         if self._active_task.done():
@@ -250,8 +299,18 @@ class ManagerApplication:
 
         def on_event(event: KnownExecutorEvent | UnknownExecutorEvent) -> None:
             if isinstance(event, UnknownExecutorEvent):
+                self._write_journal(
+                    severity="warning",
+                    event="unknown_executor_event",
+                    operation_id=claimed.operation_id,
+                    run_id=claimed.run_id,
+                    job_id=claimed.job_id,
+                    details={"operation_kind": claimed.kind},
+                    timestamp=event.timestamp,
+                )
                 return
             processor.process(event)
+            self._journal_executor_event(claimed, event)
 
         executor = self._executor_factory(on_event, self._write_executor_diagnostic)
         self._active_executor = executor
@@ -280,6 +339,17 @@ class ManagerApplication:
                     exit_code=int(ExecutorExitCode.INTERNAL_ERROR),
                     disk_offline_confirmed=False,
                 )
+            self._write_journal(
+                severity="error",
+                event="executor_transport_failed",
+                operation_id=claimed.operation_id,
+                run_id=claimed.run_id,
+                job_id=claimed.job_id,
+                details={
+                    "operation_kind": claimed.kind,
+                    "public_reason": "Executor transport failed",
+                },
+            )
         finally:
             self._active_executor = None
             if request_file is not None:
@@ -328,6 +398,81 @@ class ManagerApplication:
         with path.open("ab") as stream:
             stream.write(chunk)
             stream.flush()
+
+    def _journal_executor_event(
+        self, claimed: ClaimedRun, event: KnownExecutorEvent
+    ) -> None:
+        if isinstance(event, Progress):
+            return
+        severity: Severity = "info"
+        details: dict[str, object] = {"operation_kind": claimed.kind}
+        if isinstance(event, StageChanged):
+            details["stage"] = event.stage
+        elif isinstance(event, RunFinished):
+            if event.result == "warning":
+                severity = "warning"
+            elif event.result in {"failed", "interrupted"}:
+                severity = "error"
+            details["public_reason"] = f"Run finished: {event.result}"
+        elif isinstance(event, DiskOfflineFailed):
+            severity = "error"
+            details["public_reason"] = "Backup disk offline was not confirmed"
+        elif isinstance(event, SmartObserved) and event.health in {"warning", "critical"}:
+            severity = "warning" if event.health == "warning" else "error"
+            details["public_reason"] = f"SMART health is {event.health}"
+        elif isinstance(event, SmartTestDiskFinished) and event.result != "success":
+            severity = "warning" if event.result == "unsupported" else "error"
+            details["public_reason"] = f"SMART self-test result: {event.result}"
+        self._write_journal(
+            severity=severity,
+            event=event.event,
+            operation_id=claimed.operation_id,
+            run_id=claimed.run_id,
+            job_id=claimed.job_id,
+            details=details,
+            timestamp=event.timestamp,
+        )
+
+    def _write_journal(
+        self,
+        *,
+        severity: Severity,
+        event: str,
+        operation_id: UUID | None,
+        run_id: UUID | None,
+        job_id: str,
+        details: dict[str, object],
+        timestamp: datetime | None = None,
+    ) -> None:
+        journal = self._journal
+        if journal is None:
+            return
+        try:
+            record = journal.write(
+                severity=severity,
+                component="manager",
+                event=event,
+                operation_id=operation_id,
+                run_id=run_id,
+                job_id=job_id,
+                details=details,
+                timestamp=timestamp,
+            )
+            projection = self._log_projection
+            if projection is not None:
+                local_date = record.timestamp.astimezone(self._journal_timezone).date()
+                projection.publish_day(
+                    self._layout.logs / f"{local_date.isoformat()}.jsonl",
+                    local_date=local_date,
+                    updated_at=record.timestamp,
+                    job_display_names=self._job_display_names,
+                )
+        except OSError as error:
+            print(
+                f"runtime journal publication failed; manager continues: {error}",
+                file=sys.stderr,
+                flush=True,
+            )
 
     async def _dispatch_notification(self, now: datetime) -> None:
         dispatcher = self._notification_dispatcher

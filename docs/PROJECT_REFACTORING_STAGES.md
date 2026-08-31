@@ -71,25 +71,29 @@ Findings: F-02, F-03, F-09, F-13, F-14.
 
 Finding: F-01. Это главный функциональный пробел рефакторинга.
 
+Статус: **завершён 2026-08-31**. Runtime composition и UI-путь покрыты
+integration/contract tests. Gates на Python 3.13.5 и Python 3.12.10: `ruff check .` и
+strict `mypy` прошли, `pytest`: 405 passed, 8 skipped на каждой линии.
+
 ### Работы
 
-1. Подключить `JournalWriter` в production manager composition root.
-2. Создавать журнал как минимум для событий:
-   - постановка и старт операции;
+- [x] Подключить `JournalWriter` в production manager composition root.
+- [x] Создавать журнал как минимум для событий:
+   - старт операции и run;
    - смена stage;
-   - progress heartbeat с разумным throttling;
+   - progress heartbeat остаётся в SQLite/status projection и не пишется в JSONL;
    - warning/error;
    - terminal result и interruption при startup reconciliation.
-3. Не записывать credentials, private repository diagnostics, serial numbers и другие
+- [x] Не записывать credentials, private repository diagnostics, serial numbers и другие
    запрещённые внутренние значения в публичную часть журнала.
-4. Подключить `LogProjectionPublisher` к тому же потоку событий.
-5. Публиковать дневные sanitized projections и `logs/index.json` для `web/logs.html`.
-6. Сохранять установленную календарную retention журнала и атомарность публичных JSON.
-7. Добавить production-composition integration test:
+- [x] Подключить `LogProjectionPublisher` к тому же потоку событий.
+- [x] Публиковать дневные sanitized projections и `logs/index.json` для `web/logs.html`.
+- [x] Сохранять установленную календарную retention журнала и атомарность публичных JSON.
+- [x] Добавить production-composition integration test:
    `manager run -> journal JSONL -> sanitized daily projection -> index.json`.
-8. Повторно открыть и закрыть относящийся к журналам критерий Stage 4/Stage 10 в
+- [x] Повторно открыть и закрыть относящийся к журналам критерий Stage 4/Stage 10 в
    acceptance-документации с новой машинной проверкой.
-9. Улучшить читаемость Status UI без потери диагностических данных:
+- [x] Улучшить читаемость Status UI без потери диагностических данных:
    - карточки физических дисков по умолчанию отображаются свёрнутыми;
    - в свёрнутом состоянии видны модель, mount points, итоговый статус
      `healthy`/`warning`/`critical` и краткое описание проблемы;
@@ -249,7 +253,7 @@ Findings: F-12, F-15 и замечание о форматировании.
 ## Чек-лист прогресса
 
 - [x] R1 — совместимость, секреты и воспроизводимость
-- [ ] R2 — runtime journal и Logs UI
+- [x] R2 — runtime journal и Logs UI
 - [ ] R3 — длинные операции и lifecycle
 - [ ] R4 — CLI-контракты
 - [ ] R5 — security hardening и форматирование

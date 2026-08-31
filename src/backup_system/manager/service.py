@@ -15,7 +15,9 @@ from backup_system.common.config_io import job_protection_info, validate_job_wit
 from backup_system.common.time import utc_now
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
+from backup_system.manager.journal import JournalWriter
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
+from backup_system.manager.log_projection import LogProjectionPublisher
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
 from backup_system.manager.public_projection import HealthProjection
@@ -69,7 +71,9 @@ async def run_service(
     layout = RuntimeLayout(root)
     initialize_data_layout(layout)
     connection = open_manager_database(layout.database)
+    journal: JournalWriter | None = None
     try:
+        journal = JournalWriter(layout.logs, config.timezone)
         executor_configs = {
             job.id: validate_job_with_owner(layout.config, job.id) for job in config.jobs
         }
@@ -104,11 +108,16 @@ async def run_service(
             job_protection_info=job_protection_info(layout.config, config),
             notification_dispatcher=notification_dispatcher,
             smart_config=smart_config,
+            journal=journal,
+            log_projection=LogProjectionPublisher(layout.public_logs),
         )
         application.initialize()
         application.plan_startup_report(
             previous_seen_at=previous_seen_at,
             interrupted=tuple(str(run_id) for run_id in reconciliation.interrupted_run_ids),
+        )
+        application.journal_startup_interruptions(
+            tuple(str(run_id) for run_id in reconciliation.interrupted_run_ids)
         )
         await application.publish("starting")
 
@@ -138,6 +147,8 @@ async def run_service(
         with suppress(asyncio.CancelledError):
             await worker
     finally:
+        if journal is not None:
+            journal.close()
         connection.close()
 
 

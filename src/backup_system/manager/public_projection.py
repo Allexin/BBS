@@ -37,6 +37,7 @@ class PublicBackupMetrics(PublicModel):
     repository_added_bytes: int | None = Field(default=None, ge=0)
     repository_physical_bytes: int | None = Field(default=None, ge=0)
     repository_free_bytes: int | None = Field(default=None, ge=0)
+    observed_at: AwareDatetime
 
 
 class PublicJob(PublicModel):
@@ -52,6 +53,7 @@ class PublicJob(PublicModel):
     last_run: PublicRun | None = None
     previous_run: PublicRun | None = None
     last_success_at: AwareDatetime | None = None
+    last_completed_duration_seconds: int | None = Field(default=None, ge=0)
     backup_metrics: PublicBackupMetrics | None = None
 
 

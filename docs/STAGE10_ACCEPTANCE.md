@@ -23,10 +23,11 @@ production requirements.
 | Snapshot and mirror restore | Stage 8 tests | `poc/stage8` | Passed |
 | Recover and interrupted-run safety | recovery and manager integration tests | Stage 9 service acceptance | Passed |
 | SMART and Web UI | SMART/projection/contract tests | `poc/stage10/run_smart_web_acceptance.ps1` | Passed during Stage 10 |
+| Runtime journal and Logs UI | manager integration, journal/log projection and Web contract tests | Runtime composition correction after project review | Passed after corrective R2 |
 | Clean-host recovery by runbook | Documentation review | `poc/stage10/run_disaster_recovery_acceptance.ps1` | Passed |
 | Known limitations disposition | `docs/adr/0001` and `docs/adr/0002` | Not required | Passed |
 
-The complete non-hardware suite currently passes with 369 tests and 8 explicitly
+The complete non-hardware suite currently passes with 405 tests and 8 explicitly
 skipped hardware tests. Ruff and strict mypy also pass. Rerun all guarded machine
 checks from elevated PowerShell with:
 
@@ -49,6 +50,23 @@ removed its generated host/runtime tree, completed a full repository read, and r
 two files (1056 logical bytes) with matching hashes. No manager SQLite or lost-host
 state was used. The expected scrub-cursor-reset warning was observed after the full
 read.
+
+## Corrective runtime-composition evidence
+
+The post-Stage-10 project review found that `JournalWriter` and
+`LogProjectionPublisher` existed but were not instantiated by the production manager.
+Corrective stage R2 connected both components to the manager event flow. The integration
+test now executes a manager command and verifies the complete observable path:
+
+```text
+operation/run events -> daily private JSONL -> sanitized public day -> logs/index.json
+```
+
+Progress events remain in SQLite/status projection and are intentionally excluded from
+the durable JSONL journal. Public log records expose only allowlisted fields. Startup
+interruptions, stage changes, classified warnings/errors and terminal results are
+durable; raw executor diagnostics, credentials, repository paths and disk identities
+are not copied into public projections.
 
 ## Completion rule
 

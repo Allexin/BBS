@@ -48,3 +48,6 @@ def test_status_ui_shows_active_job_heartbeat_in_job_card() -> None:
     assert "heartbeat ${age(progress.updated_at)}" in script
     assert "status heartbeat is stale" in script
     assert "projectionAge>health.status_stale_after_seconds" in script
+    assert 'text("details",null,"card disk-card")' in script
+    assert 'addFact(facts,"Last duration"' in script
+    assert 'addFact(facts,"Repository size"' in script

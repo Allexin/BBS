@@ -241,6 +241,13 @@ class ProjectionBuilder:
                 AND result IN ('success', 'warning') ORDER BY finished_at DESC LIMIT 1""",
                 (job_id,),
             ).fetchone()
+            completed_row = self._connection.execute(
+                """SELECT runs.started_at, runs.finished_at, operations.queued_at
+                FROM runs JOIN operations ON operations.operation_id = runs.operation_id
+                WHERE runs.job_id = ? AND runs.state = 'finished'
+                ORDER BY runs.finished_at DESC LIMIT 1""",
+                (job_id,),
+            ).fetchone()
             metrics_row = self._connection.execute(
                 """SELECT backup_metrics.run_id FROM backup_metrics
                 JOIN runs ON runs.run_id = backup_metrics.run_id
@@ -267,6 +274,9 @@ class ProjectionBuilder:
                     previous_run=public_runs[1] if len(public_runs) > 1 else None,
                     last_success_at=(
                         datetime.fromisoformat(str(success_row[0])) if success_row else None
+                    ),
+                    last_completed_duration_seconds=(
+                        _completed_duration(completed_row) if completed_row else None
                     ),
                     backup_metrics=metrics,
                 )
@@ -319,7 +329,8 @@ class ProjectionBuilder:
         row = self._connection.execute(
             """SELECT source_logical_bytes, protected_logical_bytes,
                 retained_logical_bytes, bytes_read, bytes_written,
-                repository_added_bytes, repository_physical_bytes, repository_free_bytes
+                repository_added_bytes, repository_physical_bytes, repository_free_bytes,
+                observed_at
             FROM backup_metrics WHERE run_id = ?""",
             (run_id,),
         ).fetchone()
@@ -330,7 +341,6 @@ class ProjectionBuilder:
             if row
             else None
         )
-
     def _disks(self, now: datetime) -> tuple[tuple[PublicDisk, ...], tuple[PublicHealthIssue, ...]]:
         disks: list[PublicDisk] = []
         issues: list[PublicHealthIssue] = []
@@ -520,6 +530,16 @@ class ProjectionBuilder:
                 )
             )
         return tuple(result)
+
+
+def _completed_duration(row: tuple[Any, ...]) -> int:
+    started = (
+        datetime.fromisoformat(str(row[0]))
+        if row[0]
+        else datetime.fromisoformat(str(row[2]))
+    )
+    finished = datetime.fromisoformat(str(row[1]))
+    return max(0, int((finished - started).total_seconds()))
 
 
 def _delta(current: object, previous: object) -> int | None:

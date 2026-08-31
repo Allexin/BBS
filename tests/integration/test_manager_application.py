@@ -15,7 +15,9 @@ from backup_system.common.ids import new_command_id
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.executor_process import ExecutorProcessResult
+from backup_system.manager.journal import JournalWriter
 from backup_system.manager.layout import RuntimeLayout, initialize_data_layout
+from backup_system.manager.log_projection import LogProjectionPublisher, PublicLogIndex
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
 from backup_system.manager.service import ServiceLifecycle
@@ -262,6 +264,7 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
             config_valid=True,
         )
     invocations: list[object] = []
+    journal = JournalWriter(layout.logs, config.timezone)
     application = ManagerApplication(
         layout=layout,
         config=config,
@@ -269,6 +272,8 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         executor_factory=lambda on_event, on_stderr: _SuccessfulExecutor(
             on_event, invocations
         ),
+        journal=journal,
+        log_projection=LogProjectionPublisher(layout.public_logs),
     )
     application.initialize()
     command = RunCommand(
@@ -297,7 +302,20 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         assert '"manager_state":"idle"' in health
         assert not tuple(layout.commands_incoming.iterdir())
         assert (layout.commands_completed / f"{command.command_id}.json").is_file()
+        journal_days = tuple(layout.logs.glob("????-??-??.jsonl"))
+        assert len(journal_days) == 1
+        journal_text = journal_days[0].read_text(encoding="utf-8")
+        assert '"event":"operation_started"' in journal_text
+        assert '"event":"run_started"' in journal_text
+        assert '"event":"run_finished"' in journal_text
+        index = PublicLogIndex.model_validate_json(
+            (layout.public_logs / "index.json").read_text(encoding="utf-8")
+        )
+        assert index.days[0].record_count == 4
+        public_day = (layout.public_logs / index.days[0].file).read_text(encoding="utf-8")
+        assert '"job_display_name":"Data"' in public_day
     finally:
+        journal.close()
         connection.close()
 
 

@@ -116,6 +116,8 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         assert status.jobs[0].previous_run.result == "success"
         assert status.jobs[0].backup_metrics is not None
         assert status.jobs[0].backup_metrics.repository_added_bytes == 100
+        assert status.jobs[0].backup_metrics.observed_at == now
+        assert status.jobs[0].last_completed_duration_seconds == 3600
         assert status.operations[0].state == "queued"
         metric = status.disks[0].metrics["pending_sectors"]
         assert (metric.current, metric.previous, metric.delta) == (3, 1, 2)
