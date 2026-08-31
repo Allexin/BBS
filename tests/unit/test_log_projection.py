@@ -6,6 +6,17 @@ from backup_system.manager.journal import JournalWriter
 from backup_system.manager.log_projection import LogProjectionPublisher, PublicLogIndex
 
 
+def test_empty_index_is_published_before_first_journal_event(tmp_path: Path) -> None:
+    now = datetime(2026, 8, 28, 12, tzinfo=UTC)
+    index = LogProjectionPublisher(tmp_path).publish_index(generated_at=now)
+
+    assert index.days == ()
+    stored = PublicLogIndex.model_validate_json(
+        (tmp_path / "index.json").read_text(encoding="utf-8")
+    )
+    assert stored.days == ()
+
+
 def test_log_projection_exposes_only_allowlisted_sanitized_fields(tmp_path: Path) -> None:
     source = tmp_path / "private"
     public = tmp_path / "public"

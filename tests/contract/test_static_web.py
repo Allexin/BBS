@@ -22,6 +22,8 @@ def test_logs_ui_fetches_day_only_on_open_or_explicit_refresh() -> None:
     assert "setInterval(fetchIndex" in script
     assert "setInterval(loadSelected" not in script
     assert 'byId("refresh-log").addEventListener("click"' in script
+    assert "next.days.length===0" in script
+    assert "No log records yet" in script
 
 
 def test_nginx_example_has_only_scoped_static_aliases() -> None:

@@ -90,8 +90,12 @@ class LogProjectionPublisher:
         self._directory.mkdir(parents=True, exist_ok=True)
         self._delete_expired(local_date)
         _replace_json(self._directory / f"{local_date.isoformat()}.json", projection)
-        self._publish_index(generated_at=updated_at)
+        self.publish_index(generated_at=updated_at)
         return projection
+
+    def publish_index(self, *, generated_at: datetime) -> PublicLogIndex:
+        self._directory.mkdir(parents=True, exist_ok=True)
+        return self._publish_index(generated_at=generated_at)
 
     def _delete_expired(self, local_date: date) -> None:
         cutoff = local_date - timedelta(days=_RETENTION_DAYS)

@@ -160,6 +160,8 @@ class ManagerApplication:
 
     def initialize(self) -> None:
         now = utc_now()
+        if self._log_projection is not None:
+            self._log_projection.publish_index(generated_at=now)
         for job in self._config.jobs:
             self._schedules.reconcile_startup(job.id, job.schedule, now=now)
         telegram = self._config.telegram
