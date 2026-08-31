@@ -86,13 +86,15 @@ async def run_service(
                 if getattr(executor_config, "disk", None) is not None
             },
         )
+        new_job_ids: set[str] = set()
         for job in config.jobs:
-            operations.upsert_job(
+            if operations.upsert_job(
                 job_id=job.id,
                 display_name=job.display_name,
                 enabled=job.enabled,
                 config_valid=True,
-            )
+            ):
+                new_job_ids.add(job.id)
         previous_seen_at = _previous_manager_seen(layout, fallback=utc_now())
         reconciliation = operations.reconcile_startup()
 
@@ -110,7 +112,7 @@ async def run_service(
             journal=journal,
             log_projection=LogProjectionPublisher(layout.public_logs),
         )
-        application.initialize()
+        application.initialize(new_job_ids=new_job_ids)
         application.plan_startup_report(
             previous_seen_at=previous_seen_at,
             interrupted=tuple(str(run_id) for run_id in reconciliation.interrupted_run_ids),

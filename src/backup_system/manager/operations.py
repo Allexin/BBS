@@ -115,9 +115,12 @@ class OperationsRepository:
         config_valid: bool,
         config_error: str | None = None,
         updated_at: datetime | None = None,
-    ) -> None:
+    ) -> bool:
         timestamp = require_aware(updated_at or utc_now()).isoformat()
         with self._connection:
+            created = self._connection.execute(
+                "SELECT 1 FROM jobs WHERE job_id = ?", (job_id,)
+            ).fetchone() is None
             self._connection.execute(
                 """
                 INSERT INTO jobs(
@@ -133,6 +136,7 @@ class OperationsRepository:
                 """,
                 (job_id, display_name, int(enabled), int(config_valid), config_error, timestamp),
             )
+        return created
 
     def enqueue(
         self,

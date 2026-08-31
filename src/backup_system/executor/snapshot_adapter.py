@@ -92,6 +92,7 @@ class SnapshotAdapter:
             self._auth(config) as base,
             _exclude_file(config.excludes, source_root, self._secret_directory) as exclude_file,
         ):
+            self._ensure_repository(base, config)
             self._run([*base, "unlock"], config, expect_json=False)
             self._stage_sink("backing_up")
             result = self._run(
@@ -130,6 +131,30 @@ class SnapshotAdapter:
                 )
             snapshots = self._snapshot_ids(base, config)
         return SnapshotBackupResult(snapshot_id, bytes_added, snapshots)
+
+    def _ensure_repository(
+        self, base: Sequence[str], config: SnapshotJobConfig
+    ) -> None:
+        repository = Path(config.repository.path)
+        if (repository / "config").is_file():
+            return
+        if repository.exists():
+            if not repository.is_dir():
+                raise SnapshotAdapterError("snapshot repository path is not a directory")
+            try:
+                has_content = next(repository.iterdir(), None) is not None
+            except OSError as error:
+                raise SnapshotAdapterError("snapshot repository path is unreadable") from error
+            if has_content:
+                raise SnapshotAdapterError(
+                    "snapshot repository is not initialized and its directory is not empty"
+                )
+        self._stage_sink("provisioning")
+        self._run(
+            [*base, "init", "--repository-version", "stable"],
+            config,
+            expect_json=False,
+        )
 
     def check(self, config: SnapshotJobConfig, *, mode: str) -> SnapshotCheckResult:
         loaded = self._load(config)

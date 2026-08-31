@@ -26,6 +26,20 @@ def _repository(path: Path) -> tuple[OperationsRepository, sqlite3.Connection]:
     return repository, connection
 
 
+def test_upsert_job_reports_only_first_registration(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    repository = OperationsRepository(connection)
+    try:
+        assert repository.upsert_job(
+            job_id="data", display_name="Data", enabled=True, config_valid=True
+        )
+        assert not repository.upsert_job(
+            job_id="data", display_name="Renamed", enabled=True, config_valid=True
+        )
+    finally:
+        connection.close()
+
+
 def test_enqueue_is_idempotent_and_coalesces_unfinished_work(tmp_path: Path) -> None:
     repository, connection = _repository(tmp_path / "manager.sqlite3")
     try:

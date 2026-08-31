@@ -11,6 +11,7 @@ from backup_system.common.config import (
 from backup_system.executor.restic_process import ResticProcessError, ResticResult
 from backup_system.executor.snapshot_adapter import (
     SnapshotAdapter,
+    SnapshotAdapterError,
     SnapshotVerificationRequired,
 )
 from backup_system.executor.snapshot_state import SnapshotStateStore
@@ -31,6 +32,11 @@ class FakeRunner:
         del expect_json
         command = tuple(arguments)  # type: ignore[arg-type]
         self.commands.append(command)
+        if "init" in command:
+            repository = Path(command[command.index("--repo") + 1])
+            repository.mkdir(parents=True, exist_ok=True)
+            (repository / "config").write_text("initialized", encoding="ascii")
+            return ResticResult(0, ())
         if "unlock" in command:
             return ResticResult(0, ())
         if "--iexclude-file" in command:
@@ -81,12 +87,24 @@ def _config() -> SnapshotJobConfig:
     return config
 
 
+def _config_at(repository: Path) -> SnapshotJobConfig:
+    config = _config()
+    return config.model_copy(
+        update={"repository": config.repository.model_copy(update={"path": str(repository)})}
+    )
+
+
 def _adapter(tmp_path: Path, runner: FakeRunner) -> SnapshotAdapter:
     return SnapshotAdapter(
         runner=runner,
         states=SnapshotStateStore(tmp_path / "state", tmp_path / "diagnostics"),
         secret_directory=tmp_path / "secrets",
     )
+
+
+def _operations(runner: FakeRunner) -> list[str]:
+    known = {"init", "unlock", "backup", "forget", "snapshots"}
+    return [next(value for value in command if value in known) for command in runner.commands]
 
 
 def test_backup_runs_snapshot_then_retention_then_observation(tmp_path: Path) -> None:
@@ -97,20 +115,38 @@ def test_backup_runs_snapshot_then_retention_then_observation(tmp_path: Path) ->
             ResticResult(0, ({"id": "abcdef", "short_id": "abcdef"},)),
         ]
     )
-    result = _adapter(tmp_path, runner).backup(_config(), source_root=tmp_path / "shadow")
+    repository = tmp_path / "repository"
+    result = _adapter(tmp_path, runner).backup(
+        _config_at(repository), source_root=tmp_path / "shadow"
+    )
     assert result.snapshot_id == "abc"
     assert result.snapshots == ("abcdef",)
-    assert [command[3] for command in runner.commands] == [
+    assert _operations(runner) == [
+        "init",
         "unlock",
         "backup",
         "forget",
         "snapshots",
     ]
-    assert "--use-fs-snapshot" in runner.commands[1]
-    assert "--keep-weekly" in runner.commands[2]
+    assert "--use-fs-snapshot" in runner.commands[2]
+    assert "--keep-weekly" in runner.commands[3]
     source = (tmp_path / "shadow").resolve()
     expected = source.joinpath("Cache").as_posix()
     assert runner.exclude_files == [expected + "\n"]
+
+
+def test_backup_refuses_nonempty_uninitialized_repository(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    repository.mkdir()
+    (repository / "foreign.txt").write_text("do not overwrite", encoding="ascii")
+    runner = FakeRunner([])
+
+    with pytest.raises(SnapshotAdapterError, match="not empty"):
+        _adapter(tmp_path, runner).backup(
+            _config_at(repository), source_root=tmp_path / "shadow"
+        )
+
+    assert runner.commands == []
 
 
 def test_backup_translates_recursive_exclude_for_restic(tmp_path: Path) -> None:
@@ -121,7 +157,7 @@ def test_backup_translates_recursive_exclude_for_restic(tmp_path: Path) -> None:
             ResticResult(0, ({"id": "abcdef", "short_id": "abcdef"},)),
         ]
     )
-    config = _config().model_copy(
+    config = _config_at(tmp_path / "repository").model_copy(
         update={"excludes": (r"Audiolibraries\Rutracker\audio\**\*.ogg",)}
     )
 
@@ -139,27 +175,33 @@ def test_keep_all_backup_skips_forget_and_observes_all_snapshots(tmp_path: Path)
             ResticResult(0, ({"id": "old"}, {"id": "new"})),
         ]
     )
-    config = _config().model_copy(
+    config = _config_at(tmp_path / "repository").model_copy(
         update={"retention": SnapshotRetentionConfig.model_validate({"mode": "keep-all"})}
     )
 
     result = _adapter(tmp_path, runner).backup(config, source_root=tmp_path / "shadow")
 
-    assert [command[3] for command in runner.commands] == ["unlock", "backup", "snapshots"]
+    assert _operations(runner) == [
+        "init", "unlock", "backup", "snapshots"
+    ]
     assert result.snapshots == ("old", "new")
 
 
 def test_failed_backup_never_runs_retention(tmp_path: Path) -> None:
     runner = FakeRunner([ResticProcessError("source_read_error", "failed")])
     with pytest.raises(ResticProcessError):
-        _adapter(tmp_path, runner).backup(_config(), source_root=tmp_path / "shadow")
-    assert [command[3] for command in runner.commands] == ["unlock", "backup"]
+        _adapter(tmp_path, runner).backup(
+            _config_at(tmp_path / "repository"), source_root=tmp_path / "shadow"
+        )
+    assert _operations(runner) == [
+        "init", "unlock", "backup"
+    ]
 
 
 def test_failed_check_repeats_cursor_and_blocks_backup(tmp_path: Path) -> None:
     runner = FakeRunner([ResticProcessError("repository_io_error", "failed"), ResticResult(0, ())])
     adapter = _adapter(tmp_path, runner)
-    config = _config()
+    config = _config_at(tmp_path / "repository")
     with pytest.raises(ResticProcessError):
         adapter.check(config, mode="subset")
     with pytest.raises(SnapshotVerificationRequired):
@@ -179,7 +221,7 @@ def test_only_successful_full_check_clears_gate(tmp_path: Path) -> None:
         ]
     )
     adapter = _adapter(tmp_path, runner)
-    config = _config()
+    config = _config_at(tmp_path / "repository")
     with pytest.raises(ResticProcessError):
         adapter.check(config, mode="metadata")
     adapter.check(config, mode="full")
@@ -189,5 +231,7 @@ def test_only_successful_full_check_clears_gate(tmp_path: Path) -> None:
 def test_none_mode_translates_key_error_to_auth_mode_mismatch(tmp_path: Path) -> None:
     runner = FakeRunner([ResticProcessError("repository_key_invalid", "wrong key")])
     with pytest.raises(ResticProcessError) as raised:
-        _adapter(tmp_path, runner).backup(_config(), source_root=tmp_path / "shadow")
+        _adapter(tmp_path, runner).backup(
+            _config_at(tmp_path / "repository"), source_root=tmp_path / "shadow"
+        )
     assert raised.value.fault == "repository_auth_mode_mismatch"

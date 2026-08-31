@@ -158,11 +158,13 @@ class ManagerApplication:
     def pending_cancellation_count(self) -> int:
         return len(self._cancellation_tasks)
 
-    def initialize(self) -> None:
+    def initialize(self, *, new_job_ids: set[str] | None = None) -> None:
         now = utc_now()
         if self._log_projection is not None:
             self._log_projection.publish_index(generated_at=now)
         for job in self._config.jobs:
+            if new_job_ids is not None and job.id in new_job_ids:
+                self._schedules.initialize_new_job(job.id, job.schedule, now=now)
             self._schedules.reconcile_startup(job.id, job.schedule, now=now)
         telegram = self._config.telegram
         self._daily_reports.reconcile_startup(
