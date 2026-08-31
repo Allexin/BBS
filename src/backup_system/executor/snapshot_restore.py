@@ -6,6 +6,7 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -95,11 +96,20 @@ class SnapshotRestore:
             cancellation=self._cancellation,
             progress_sink=self._progress_sink,
         )
-        shutil.rmtree(staging)
+        _remove_staging(staging)
         self._stage_sink("verifying")
         return target.verify_and_complete(result, manifest)
 
 
+def _remove_staging(staging: Path) -> None:
+    def retry_readonly(
+        function: Callable[[str], object], path: str, error: BaseException
+    ) -> None:
+        del error
+        os.chmod(path, stat.S_IWRITE)
+        function(path)
+
+    shutil.rmtree(staging, onexc=retry_readonly)
 
 def resolve_snapshot_version(
     runner: ResticRunner,

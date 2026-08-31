@@ -8,10 +8,22 @@ from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.restic_process import ResticResult
 from backup_system.executor.restore_request import RestoreRequest
 from backup_system.executor.restore_target import RestoreTarget, RestoreVerificationError
-from backup_system.executor.snapshot_restore import SnapshotRestore
+from backup_system.executor.snapshot_restore import SnapshotRestore, _remove_staging
 
 SNAPSHOT_ID = "a" * 64
 REQUEST_ID = UUID("11111111-1111-4111-8111-111111111111")
+
+
+def test_remove_staging_retries_readonly_directories(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    child = staging / "Program Files"
+    child.mkdir(parents=True)
+    (child / "file.txt").write_text("restored", encoding="utf-8")
+    child.chmod(0o444)
+
+    _remove_staging(staging)
+
+    assert not staging.exists()
 
 
 class FakeRunner:
