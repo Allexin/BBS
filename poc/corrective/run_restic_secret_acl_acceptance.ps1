@@ -31,7 +31,9 @@ try {
 
     Write-Output '[2/4] Starting the LocalSystem ACL check with a test-only secret.'
     & nssm start $service | Out-Null
-    if ($LASTEXITCODE -ne 0) { throw 'Unable to start the acceptance service.' }
+    if ($LASTEXITCODE -ne 0) {
+        Write-Output 'The service exited before NSSM acknowledged START; checking its result.'
+    }
 
     Write-Output '[3/4] Waiting for the bounded acceptance result.'
     $deadline = [DateTime]::UtcNow.AddSeconds(60)

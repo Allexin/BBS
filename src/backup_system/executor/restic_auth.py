@@ -58,6 +58,7 @@ def _create_protected_secret(path: Path) -> int:
 def _create_protected_secret_windows(path: Path) -> int:
     import msvcrt
 
+    import ntsecuritycon  # type: ignore[import-untyped]
     import pywintypes  # type: ignore[import-untyped]
     import win32api  # type: ignore[import-untyped]
     import win32con  # type: ignore[import-untyped]
@@ -91,7 +92,7 @@ def _create_protected_secret_windows(path: Path) -> int:
         if actual_dacl is None or actual_dacl.GetAceCount() != 1:
             raise ResticSecretError("password file DACL read-back mismatch")
         ace = actual_dacl.GetAce(0)
-        if ace[1] != win32con.FILE_ALL_ACCESS or ace[2] != system_sid:
+        if ace[1] != ntsecuritycon.FILE_ALL_ACCESS or ace[2] != system_sid:
             raise ResticSecretError("password file DACL read-back mismatch")
         raw_handle = handle.Detach()
         return msvcrt.open_osfhandle(raw_handle, os.O_WRONLY)
