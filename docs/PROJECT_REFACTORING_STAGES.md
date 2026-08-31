@@ -200,13 +200,13 @@ Findings: F-12, F-15 и замечание о форматировании.
 
 ### Работы
 
-1. Удалить неиспользуемый `common/json_io.py` и ссылки на него либо обосновать и
+- [x] Удалить неиспользуемый `common/json_io.py` и ссылки на него либо обосновать и
    подключить модуль, если он нужен нормативному дизайну.
-2. Закрыть ACL window restic password file:
+- [x] Закрыть ACL window restic password file:
    - создавать файл сразу с restrictive Windows DACL;
    - только после read-back verification записывать passphrase;
    - гарантировать cleanup при ошибке на любом шаге.
-3. Добавить Windows security regression test, не использующий production credentials.
+- [x] Добавить Windows security regression test, не использующий production credentials.
 4. Отдельным механическим коммитом применить `ruff format` и включить
    `ruff format --check` в обычный gate. Не смешивать форматирование с логикой.
 
