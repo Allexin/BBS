@@ -265,6 +265,11 @@ Disk safety latch создаётся только для job с настроен
 `disk`. Ошибка, interruption или crash always-online job не может установить такой
 latch. Активный latch публикуется как системная critical-проблема, а каждая удерживаемая
 queued operation содержит явную причину блокировки и требование ручного recovery.
+
+Несколько независимых repositories на одном backup volume используют общий marker file
+и общий `marker_uuid`: marker идентифицирует носитель, а не repository. Для каждой
+snapshot job уникальны `repository_id` и repository path. Одинаковый marker path с
+разными UUID либо один UUID с разными marker paths является config error.
 Размещение source и назначения на одном томе разрешено: оно защищает от порчи или
 случайной утраты файлов, но не от отказа физического носителя. Config validation
 завершается успешно и обязана явно вывести warning об этом ограничении защиты.

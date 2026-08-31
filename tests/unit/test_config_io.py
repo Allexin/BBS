@@ -122,6 +122,32 @@ def test_config_tree_validates_maintenance_owner(tmp_path: Path) -> None:
     assert isinstance(validate_job_with_owner(tmp_path, "data-maintenance"), MaintenanceJobConfig)
 
 
+def test_distinct_repositories_may_share_one_volume_marker(tmp_path: Path) -> None:
+    manager_path = _write_valid_tree(tmp_path)
+    manager_text = manager_path.read_text(encoding="utf-8")
+    manager_path.write_text(
+        manager_text.replace(
+            "jobs:\n",
+            "jobs:\n"
+            "  - id: second\n"
+            "    enabled: true\n"
+            "    display_name: Second\n"
+            "    schedule: {cron: '0 1 * * 1', timezone: Europe/Samara, "
+            "cycle: [{operation: backup}]}\n",
+        ),
+        encoding="utf-8",
+    )
+    original = (tmp_path / "jobs" / "data.yaml").read_text(encoding="utf-8")
+    second = original.replace("id: data", "id: second", 1).replace(
+        "repository_id: primary", "repository_id: second"
+    ).replace(r"C:\Backup\restic", r"C:\Backup\second")
+    _write(tmp_path / "jobs" / "second.yaml", second)
+
+    manager, _ = validate_config_tree(manager_path)
+
+    assert {job.id for job in manager.jobs} >= {"data", "second"}
+
+
 def test_same_volume_backup_is_valid_with_warning(tmp_path: Path) -> None:
     manager_path = _write_valid_tree(tmp_path)
     job_path = tmp_path / "jobs" / "data.yaml"

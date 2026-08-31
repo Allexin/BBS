@@ -117,9 +117,17 @@ def validate_config_tree(manager_path: Path) -> tuple[ManagerConfig, SmartConfig
             if (
                 left.repository.repository_id == right.repository.repository_id
                 or left.repository.path.casefold() == right.repository.path.casefold()
-                or left.repository.marker_uuid == right.repository.marker_uuid
             ):
                 raise ConfigLoadError("snapshot jobs must own distinct repositories")
+            same_marker_file = (
+                left.repository.marker_file.casefold()
+                == right.repository.marker_file.casefold()
+            )
+            same_marker_uuid = left.repository.marker_uuid == right.repository.marker_uuid
+            if same_marker_file != same_marker_uuid:
+                raise ConfigLoadError(
+                    "repositories sharing a volume marker must use the same file and UUID"
+                )
     return manager, smart
 
 
