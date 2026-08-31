@@ -202,7 +202,8 @@ Findings: F-12, F-15 и замечание о форматировании.
 **Статус: завершён.** Полный gate на Python 3.12 и 3.13: 422 tests collected,
 413 passed, 9 skipped; `ruff check`, `ruff format --check` и `mypy` проходят на
 обеих версиях. LocalSystem ACL regression добавлен в hardware-набор и ожидает
-фактического запуска при R6 acceptance.
+фактического запуска при R6 acceptance. Фактический запуск затем выполнен через
+временный NSSM-сервис: passed, использован только test-only secret.
 
 ### Работы
 

@@ -48,6 +48,8 @@ The result contains no credentials and is saved to
 
 ## R6 restic secret-file ACL
 
+Status: passed under LocalSystem with the hard-coded test-only secret.
+
 Run from an elevated PowerShell. The harness creates a temporary NSSM service under
 LocalSystem, uses only a hard-coded test secret, writes evidence below `.poc-work`, and
 removes the temporary service. It does not access Stable or any backup disk.
