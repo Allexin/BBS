@@ -68,6 +68,11 @@ class SnapshotRestore:
             base = ("--repo", config.repository.path, *auth)
             snapshot_id = resolve_snapshot_version(self._runner, base, config, request.version)
             self._stage_sink("restoring")
+            selection = (
+                ()
+                if request.path == "."
+                else ("--include", _snapshot_selection(config.source.path, request.path))
+            )
             self._runner.run(
                 [
                     *base,
@@ -76,6 +81,7 @@ class SnapshotRestore:
                     "--verify",
                     "--overwrite",
                     "never",
+                    *selection,
                     snapshot_id,
                     "--target",
                     str(staging),
@@ -97,6 +103,16 @@ class SnapshotRestore:
         _remove_staging(staging)
         self._stage_sink("verifying")
         return target.verify_and_complete(result, manifest)
+
+
+def _snapshot_selection(configured_source: str, selection: str) -> str:
+    source = PureWindowsPath(configured_source)
+    drive = source.drive.rstrip(":")
+    if not drive:
+        raise RestoreTargetError("snapshot source has no Windows drive")
+    source_parts = source.parts[1:]
+    selected_parts = PureWindowsPath(selection).parts
+    return "/" + "/".join((drive, *source_parts, *selected_parts))
 
 
 def _remove_staging(staging: Path) -> None:

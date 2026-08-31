@@ -8,7 +8,11 @@ from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.restic_process import ResticResult
 from backup_system.executor.restore_request import RestoreRequest
 from backup_system.executor.restore_target import RestoreTarget, RestoreVerificationError
-from backup_system.executor.snapshot_restore import SnapshotRestore, _remove_staging
+from backup_system.executor.snapshot_restore import (
+    SnapshotRestore,
+    _remove_staging,
+    _snapshot_selection,
+)
 
 SNAPSHOT_ID = "a" * 64
 REQUEST_ID = UUID("11111111-1111-4111-8111-111111111111")
@@ -24,6 +28,13 @@ def test_remove_staging_retries_readonly_directories(tmp_path: Path) -> None:
     _remove_staging(staging)
 
     assert not staging.exists()
+
+
+def test_snapshot_selection_uses_exact_windows_source_path() -> None:
+    assert (
+        _snapshot_selection(r"S:\BasovBackupSystem", r"BBS\README.md")
+        == "/S/BasovBackupSystem/BBS/README.md"
+    )
 
 
 class FakeRunner:
@@ -125,7 +136,18 @@ def test_snapshot_subtree_restore_preserves_layout(tmp_path: Path) -> None:
     assert SNAPSHOT_ID in restore_command
     assert "--verify" in restore_command
     assert "--overwrite" in restore_command and "never" in restore_command
+    assert restore_command[restore_command.index("--include") + 1] == "/F/source/Folder"
     assert progress == [("restoring", 1), ("verifying", 1)]
+
+
+def test_full_snapshot_restore_has_no_include_filter(tmp_path: Path) -> None:
+    target = tmp_path / "target"
+    target.mkdir()
+    runner = FakeRunner()
+
+    _adapter(runner, tmp_path).run(_config(), _request(target, "."))
+
+    assert "--include" not in runner.commands[1]
 
 
 def test_explicit_snapshot_must_belong_to_filtered_job_list(tmp_path: Path) -> None:

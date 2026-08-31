@@ -1041,6 +1041,12 @@ glob и пустая строка. Target parent должен существов
 исключением и помещает содержимое всего source root непосредственно в
 `BackupRestore-...`. Snapshot и mirror используют одинаковую семантику layout.
 
+Snapshot restore обязан ограничивать чтение repository на стороне restic: конкретный
+relative path передаётся как точный snapshot path через `restic restore --include`.
+Запрещено сначала восстанавливать весь snapshot в staging и только затем выбирать
+запрошенный файл или поддерево. Полный restore без `--include` допустим только для
+явного `--path .`.
+
 Manager создаёт request UUID. Executor внутри указанного parent атомарно создаёт
 новую технически именованную папку вида
 `BackupRestore-<job-id>-<UTC>-<request-id>` и до первой записи подтверждает, что она

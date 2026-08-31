@@ -239,6 +239,10 @@ Findings: F-12, F-15 и замечание о форматировании.
 - [x] Проверить первый post-refactoring Stable startup и исправить пустой Logs UI:
   `logs/index.json` теперь публикуется при initialize даже до первого journal event,
   а Web UI явно показывает отсутствие записей.
+- [x] Перед production restore устранить восстановление полного snapshot для
+  конкретного `--path`: selective snapshot restore теперь передаёт точный
+  source-relative путь в restic через `--include`; полный restore остаётся только для
+  явного `--path .`.
 - [ ] Выполнить только необходимые hardware/Stable acceptance после завершения активных
    production jobs.
 - [ ] Проверить в Stable:
