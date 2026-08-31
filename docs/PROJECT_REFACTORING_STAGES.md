@@ -226,6 +226,10 @@ Findings: F-12, F-15 и замечание о форматировании.
 
 ## Этап R6 — повторное системное ревью и production acceptance
 
+**Статус: завершён.** Все findings F-01—F-15 закрыты. Software gate на Python
+3.12/3.13, LocalSystem ACL, post-deploy Stable, stale-lock recovery, selective restore,
+Logs/sanitization, Telegram failed-run pipeline и изолированная Dev job приняты.
+
 ### Работы
 
 - [x] Повторить полный repository review с акцентом на composition root и длинные пути.
@@ -246,16 +250,19 @@ Findings: F-12, F-15 и замечание о форматировании.
 - [x] Выполнить production selective-restore acceptance: `servers-s` README.md
   восстановлен за 3 секунды в отдельный `B:\Test\BackupRestore-*`, сохранён logical
   layout, SHA-256 совпал с source, `.restore-incomplete` после verification отсутствует.
-- [ ] Выполнить только необходимые hardware/Stable acceptance после завершения активных
+- [x] Выполнить только необходимые hardware/Stable acceptance после завершения активных
    production jobs.
-- [ ] Проверить в Stable:
-   - restart validation;
-   - свежий status heartbeat;
-   - рабочий Logs UI;
-   - Telegram failure notification;
-   - запуск и завершение тестовой dev job;
-   - отсутствие секретов в journal/public projections.
-- [ ] Обновить `PROJECT_REVIEW.md` итоговым статусом findings и acceptance-документы.
+- [x] Проверить в Stable:
+   - [x] restart validation;
+   - [x] свежий status heartbeat;
+   - [x] рабочий Logs UI: HTTP 200, 23 records, index/day SHA-256 совпадает;
+   - [x] Telegram failure notification через synthetic failed run, durable outbox и
+     реальные Dev credentials: delivered, outbox `sent`;
+   - [x] запуск и завершение изолированной тестовой Dev job через production manager
+     composition: terminal success, status/health/journal/public Logs проверены;
+   - [x] отсутствие известных private paths, proxy/Telegram endpoint и token-shaped
+     значений в journal/public projections.
+- [x] Обновить `PROJECT_REVIEW.md` итоговым статусом findings и acceptance-документы.
 
 ### Приёмка
 
@@ -264,19 +271,12 @@ Findings: F-12, F-15 и замечание о форматировании.
 - Stable acceptance не использует реальные данные там, где достаточно dev/test data.
 - Production jobs и их конфигурации сохраняются при deploy.
 
-## Текущая точка продолжения
+## Итоговая точка
 
-На момент создания плана:
-
-- revision `be21234` развёрнута в Stable;
-- production job `servers-s` выполняет первый полный backup `S:\` в
-  `B:\BBS_DEST\servers-s`;
-- во время этой job новый runtime не деплоится;
-- следующий шаг разработки — **этап R1**;
-- после R1 код можно коммитить и тестировать, но deploy ожидает завершения
-  `servers-s`;
-- затем выполняется **R2 целиком**, без перехода к остальным findings до получения
-  рабочего runtime journal и Logs UI.
+Этапы R1—R6 завершены. Production job `servers-s` успешно подтвердила incremental
+backup, автоматическую очистку stale restic lock и retention. Выборочный restore одного
+файла подтверждён сравнением SHA-256. Следующая работа оформляется отдельным планом, а
+не продолжением corrective review.
 
 ## Чек-лист прогресса
 
@@ -285,4 +285,4 @@ Findings: F-12, F-15 и замечание о форматировании.
 - [x] R3 — длинные операции и lifecycle
 - [x] R4 — CLI-контракты
 - [x] R5 — security hardening и форматирование
-- [ ] R6 — повторное ревью и production acceptance
+- [x] R6 — повторное ревью и production acceptance

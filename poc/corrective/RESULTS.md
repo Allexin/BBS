@@ -57,3 +57,17 @@ removes the temporary service. It does not access Stable or any backup disk.
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_restic_secret_acl_acceptance.ps1
 ```
+
+## R6 Telegram failed-run pipeline
+
+Status: passed; the synthetic `run_failed` notification was delivered and the isolated
+outbox reached terminal `sent` state without retries.
+
+The harness uses ignored Dev credentials and an isolated SQLite database below
+`.poc-work`. It creates a synthetic failed run, verifies durable `run_failed` outbox
+creation, delivers the real formatted notification, and requires terminal `sent`
+state. Stable and backup data are not accessed.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_telegram_failure_acceptance.ps1
+```

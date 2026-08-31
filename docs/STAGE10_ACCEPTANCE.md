@@ -73,3 +73,25 @@ are not copied into public projections.
 Stage 10 closes only when every row is passed in the current revision, machine results
 contain no real paths or data in Git, and remaining limitations are fixed or recorded in
 an ADR. Production jobs are still out of scope until that closure is committed.
+
+## Corrective R6 production acceptance
+
+The post-review R1—R6 corrections were accepted on the deployed Windows runtime:
+
+- service restart validation completed and heartbeat remained fresh;
+- production configuration and manager state survived deployment;
+- a stale restic lock left by an interrupted run was removed by the next snapshot job,
+  which completed incremental backup and retention successfully;
+- selective restore fetched one 589-byte file rather than the full snapshot, preserved
+  its logical path, removed the incomplete marker, and matched the source SHA-256;
+- Logs index was available over HTTP, its day digest matched, and public/private log
+  projections contained no known credentials or private source/repository paths;
+- the LocalSystem-only restic password-file ACL test passed with a test secret;
+- an isolated synthetic failed run produced a durable Telegram outbox record, delivered
+  through the configured Dev transport, and reached `sent` without retry;
+- an isolated Dev spool job completed through the production manager composition and
+  published terminal status, health, private journal and sanitized public logs.
+
+No acceptance step modified source data. The one production backup and selective
+restore were explicitly operator-approved; all other fault/notification checks used
+generated Dev state and test-only data.
