@@ -139,6 +139,10 @@ class ExecutorProcessRunner:
                             )
                         terminal = event
                     self._on_event(event)
+                    if isinstance(event, RunFinished):
+                        stdin = process.stdin
+                        if stdin is not None and not stdin.is_closing():
+                            stdin.close()
             except (ExecutorProtocolError, ValueError, TypeError) as error:
                 protocol_error = (
                     error

@@ -168,6 +168,12 @@ watchdog-kill. Предполагаемое зависание является 
 оно отражается в UI и Telegram, а решение об остановке или другом вмешательстве
 принимает человек.
 
+После получения терминального `run_finished` manager закрывает stdin pipe supervisor.
+Supervisor закрывает унаследованный stdin executor и дожидается завершения relay
+thread; executor, в свою очередь, дожидается завершения cancellation reader. Эти
+reader threads не являются daemon threads. Это исключает зависание или fatal shutdown
+Python из-за фонового чтения buffered stdin после уже завершённой операции.
+
 Manager не импортирует модули executor и не разбирает операционный конфиг. Его конфигурация содержит только:
 
 - `job_id`;

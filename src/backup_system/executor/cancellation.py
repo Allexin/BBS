@@ -48,7 +48,7 @@ class StdinCancellationMonitor:
     def start(self) -> None:
         if self._thread is not None:
             raise RuntimeError("cancellation monitor was already started")
-        self._thread = Thread(target=self._run, name="executor-cancel", daemon=True)
+        self._thread = Thread(target=self._run, name="executor-cancel")
         self._thread.start()
 
     def wait(self, timeout_seconds: float) -> bool:

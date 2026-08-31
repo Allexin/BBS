@@ -35,9 +35,13 @@ class _Reader:
 class _Writer:
     def __init__(self) -> None:
         self.payload = bytearray()
+        self.closed = False
 
     def is_closing(self) -> bool:
-        return False
+        return self.closed
+
+    def close(self) -> None:
+        self.closed = True
 
     def write(self, data: bytes) -> None:
         self.payload.extend(data)
@@ -97,6 +101,7 @@ def test_runner_drains_both_streams_and_validates_terminal(
     assert result.exit_code == 0
     assert diagnostics == [b"diagnostic"]
     assert len(events) == 3
+    assert process.stdin.closed
 
 
 def test_protocol_failure_requests_cancel_and_still_drains(

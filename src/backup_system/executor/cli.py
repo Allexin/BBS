@@ -345,6 +345,7 @@ def _execute_operation(
         job_id=job_id,
         operation=lambda: operation(token, smart_sink, sink.emit),
     )
+    monitor.wait(timeout_seconds=5)
     return int(outcome.exit_code)
 
 
@@ -378,4 +379,5 @@ def _execute_recovery(
         job_id=job_id,
         operation=checked_operation,
     )
+    monitor.wait(timeout_seconds=5)
     return int(outcome.exit_code)

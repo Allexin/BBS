@@ -32,6 +32,17 @@ def test_supervisor_starts_exact_argv_without_shell(monkeypatch) -> None:
 
     monkeypatch.setattr(executor_supervisor.subprocess, "Popen", popen)
     monkeypatch.setattr(executor_supervisor.threading.Thread, "start", lambda self: None)
+    monkeypatch.setattr(executor_supervisor.threading.Thread, "join", lambda self: None)
     assert executor_supervisor.main(["--", "python.exe", "-m", "worker"]) == 17
     assert captured["argv"] == ["python.exe", "-m", "worker"]
     assert captured["kwargs"]["shell"] is False
+
+
+def test_relay_closes_child_stdin_when_manager_pipe_closes(monkeypatch) -> None:
+    process = _Process()
+    process.stdin = io.BytesIO()
+    monkeypatch.setattr(executor_supervisor.sys, "stdin", _TextInput(b""))
+
+    executor_supervisor._relay_cancel(process)
+
+    assert process.stdin.closed

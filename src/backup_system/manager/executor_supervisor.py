@@ -10,12 +10,19 @@ from collections.abc import Sequence
 
 def _relay_cancel(process: subprocess.Popen[bytes]) -> None:
     frame = sys.stdin.buffer.readline(64)
-    if frame == b"cancel\n" and process.stdin is not None:
+    child_stdin = process.stdin
+    if child_stdin is None:
+        return
+    try:
+        if frame != b"cancel\n":
+            return
         try:
-            process.stdin.write(frame)
-            process.stdin.flush()
+            child_stdin.write(frame)
+            child_stdin.flush()
         except BrokenPipeError:
             pass
+    finally:
+        child_stdin.close()
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -33,9 +40,11 @@ def main(argv: Sequence[str] | None = None) -> int:
         stderr=sys.stderr.buffer,
         shell=False,
     )
-    relay = threading.Thread(target=_relay_cancel, args=(process,), daemon=True)
+    relay = threading.Thread(target=_relay_cancel, args=(process,))
     relay.start()
-    return process.wait()
+    exit_code = process.wait()
+    relay.join()
+    return exit_code
 
 
 if __name__ == "__main__":
