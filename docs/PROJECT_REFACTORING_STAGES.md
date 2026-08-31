@@ -227,20 +227,20 @@ Findings: F-12, F-15 и замечание о форматировании.
 
 ### Работы
 
-1. Повторить полный repository review с акцентом на composition root и длинные пути.
-2. Для F-01—F-15 зафиксировать: закрыто, отклонено с обоснованием или перенесено с
+- [x] Повторить полный repository review с акцентом на composition root и длинные пути.
+- [x] Для F-01—F-15 зафиксировать: закрыто, отклонено с обоснованием или перенесено с
    явным риском и владельцем.
-3. Прогнать полный программный gate на поддерживаемых Python versions.
-4. Выполнить только необходимые hardware/Stable acceptance после завершения активных
+- [x] Прогнать полный программный gate на поддерживаемых Python versions.
+- [ ] Выполнить только необходимые hardware/Stable acceptance после завершения активных
    production jobs.
-5. Проверить в Stable:
+- [ ] Проверить в Stable:
    - restart validation;
    - свежий status heartbeat;
    - рабочий Logs UI;
    - Telegram failure notification;
    - запуск и завершение тестовой dev job;
    - отсутствие секретов в journal/public projections.
-6. Обновить `PROJECT_REVIEW.md` итоговым статусом findings и acceptance-документы.
+- [ ] Обновить `PROJECT_REVIEW.md` итоговым статусом findings и acceptance-документы.
 
 ### Приёмка
 

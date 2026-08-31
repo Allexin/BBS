@@ -45,3 +45,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_tel
 
 The result contains no credentials and is saved to
 `.poc-work\corrective-telegram\telegram-result.json`.
+
+## R6 restic secret-file ACL
+
+Run from an elevated PowerShell. The harness creates a temporary NSSM service under
+LocalSystem, uses only a hard-coded test secret, writes evidence below `.poc-work`, and
+removes the temporary service. It does not access Stable or any backup disk.
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\poc\corrective\run_restic_secret_acl_acceptance.ps1
+```
