@@ -8,6 +8,11 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
+_IGNORED_RELEASE_DIRECTORIES = frozenset(
+    {"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache"}
+)
+_IGNORED_RELEASE_SUFFIXES = frozenset({".pyc", ".pyo"})
+
 
 class DeploymentManifestError(ValueError):
     pass
@@ -74,9 +79,33 @@ def _copy_tree(source: Path, relative: str, target: Path) -> None:
     if not path.is_dir():
         raise DeploymentManifestError(f"manifest tree is missing: {relative}")
     for child in path.rglob("*"):
+        if _is_release_artifact(child, root=path):
+            continue
         if child.is_symlink():
             raise DeploymentManifestError(f"release tree contains a symlink: {child}")
-    shutil.copytree(path, target, copy_function=shutil.copy2)
+    shutil.copytree(
+        path,
+        target,
+        copy_function=shutil.copy2,
+        ignore=_ignore_release_artifacts,
+    )
+
+
+def _ignore_release_artifacts(directory: str, names: list[str]) -> set[str]:
+    del directory
+    return {
+        name
+        for name in names
+        if name in _IGNORED_RELEASE_DIRECTORIES
+        or Path(name).suffix.casefold() in _IGNORED_RELEASE_SUFFIXES
+    }
+
+
+def _is_release_artifact(path: Path, *, root: Path) -> bool:
+    relative = path.relative_to(root)
+    return any(part in _IGNORED_RELEASE_DIRECTORIES for part in relative.parts) or (
+        path.suffix.casefold() in _IGNORED_RELEASE_SUFFIXES
+    )
 
 
 def _guard_source(source: Path, relative: str) -> Path:

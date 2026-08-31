@@ -1645,7 +1645,7 @@ disk:
   repository_path_timeout_seconds: 30
 
 backup:
-  host: basovs-server
+  host: backup-host
   tags: ['job:data']
   read_error_result: failed
 

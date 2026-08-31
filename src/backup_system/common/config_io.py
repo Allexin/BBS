@@ -43,21 +43,36 @@ def load_manager_config(path: Path) -> ManagerConfig:
     try:
         return ManagerConfig.model_validate(_load_yaml_mapping(path))
     except ValidationError as error:
-        raise ConfigLoadError(f"invalid manager config {path}: {error}") from error
+        raise ConfigLoadError(
+            f"invalid manager config {path}: {_safe_validation_error(error)}"
+        ) from error
 
 
 def load_smart_config(path: Path) -> SmartConfig:
     try:
         return SmartConfig.model_validate(_load_yaml_mapping(path))
     except ValidationError as error:
-        raise ConfigLoadError(f"invalid SMART config {path}: {error}") from error
+        raise ConfigLoadError(
+            f"invalid SMART config {path}: {_safe_validation_error(error)}"
+        ) from error
 
 
 def load_job_config(path: Path) -> ExecutorJobConfig:
     try:
         return EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(_load_yaml_mapping(path))
     except ValidationError as error:
-        raise ConfigLoadError(f"invalid executor job config {path}: {error}") from error
+        raise ConfigLoadError(
+            f"invalid executor job config {path}: {_safe_validation_error(error)}"
+        ) from error
+
+
+def _safe_validation_error(error: ValidationError) -> str:
+    messages: list[str] = []
+    for item in error.errors(include_url=False, include_input=False):
+        location = ".".join(str(part) for part in item["loc"])
+        prefix = f"{location}: " if location else ""
+        messages.append(f"{prefix}{item['msg']} [{item['type']}]")
+    return "; ".join(messages)
 
 
 def job_config_path(config_dir: Path, job_id: str) -> Path:

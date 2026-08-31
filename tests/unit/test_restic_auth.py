@@ -13,6 +13,7 @@ def test_none_mode_uses_required_insecure_flag(tmp_path: Path) -> None:
 def test_password_file_is_protected_and_removed(tmp_path: Path) -> None:
     protected: list[Path] = []
     config = EncryptionConfig(mode="password", passphrase="test-only-secret")
+    assert "test-only-secret" not in repr(config)
     with restic_auth_arguments(config, tmp_path, protect=protected.append) as arguments:
         path = Path(arguments[1])
         assert arguments[0] == "--password-file"

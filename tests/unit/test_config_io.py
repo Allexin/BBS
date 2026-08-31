@@ -114,6 +114,39 @@ def test_load_manager_rejects_non_mapping_yaml(tmp_path: Path) -> None:
         load_manager_config(path)
 
 
+def test_job_validation_error_never_contains_rejected_passphrase(tmp_path: Path) -> None:
+    secret = "87654321"
+    path = tmp_path / "jobs" / "job.yaml"
+    _write(
+        path,
+        """schema_version: 1
+id: data
+kind: snapshot
+display_name: Data
+source: {path: 'F:\\'}
+excludes: []
+repository:
+  engine: restic
+  repository_id: data
+  path: 'B:\\repo'
+  marker_uuid: '00000000-0000-0000-0000-000000000001'
+  encryption: {mode: password, passphrase: 87654321}
+  marker_file: 'B:\\.backup-volume.json'
+backup: {host: test, tags: [], read_error_result: failed}
+retention: {mode: keep-all}
+verification: {data_subset_parts: 1, restore_test_paths: []}
+""",
+    )
+
+    with pytest.raises(ConfigLoadError) as raised:
+        validate_job_with_owner(tmp_path, "job")
+
+    message = str(raised.value)
+    assert secret not in message
+    assert "input_value" not in message
+    assert "passphrase" in message
+
+
 def test_config_tree_validates_maintenance_owner(tmp_path: Path) -> None:
     manager_path = _write_valid_tree(tmp_path)
     manager, smart = validate_config_tree(manager_path)

@@ -86,6 +86,7 @@ def test_previous_manager_seen_comes_from_last_atomic_health(tmp_path: Path) -> 
                 "manager_state": "idle",
                 "manager_started_at": observed.isoformat(),
                 "version": "0.1.0",
+                "status_stale_after_seconds": 60,
             }
         ),
         encoding="utf-8",

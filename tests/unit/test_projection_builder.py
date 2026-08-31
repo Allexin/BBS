@@ -107,6 +107,7 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         )
 
         assert status.generation_id == health.generation_id
+        assert health.status_stale_after_seconds == 60
         assert status.backup_disk_state == "offline"
         assert status.jobs[0].kind == "snapshot"
         assert status.jobs[0].last_run is not None

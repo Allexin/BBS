@@ -33,6 +33,7 @@ def _projections(generation_id: UUID) -> tuple[StatusProjection, HealthProjectio
         manager_state="idle",
         manager_started_at=now,
         version="0.1.0",
+        status_stale_after_seconds=60,
     )
     return status, health
 

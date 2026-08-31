@@ -37,22 +37,27 @@
 
 Findings: F-02, F-03, F-09, F-13, F-14.
 
+Статус: реализация завершена 2026-08-31. Локальный gate на Python 3.13.5:
+`ruff check .` и strict `mypy` прошли, `pytest`: 405 passed, 8 skipped. Итоговая
+приёмка R1 ожидает отдельного прогона на Python 3.12: этот интерпретатор отсутствует
+на текущей машине.
+
 ### Работы
 
-1. Вынести общий cron validator в модульную функцию и использовать её в
+- [x] Вынести общий cron validator в модульную функцию и использовать её в
    `ScheduleConfig` и `TelegramConfig`, не переоборачивая bound classmethod.
-2. Исключить значения restic passphrase из `ValidationError`, stderr и
+- [x] Исключить значения restic passphrase из `ValidationError`, stderr и
    `bootstrap.jsonl`:
    - хранить passphrase как secret-тип;
    - формировать публичное сообщение validation error без поля `input`;
    - проверить YAML со случайно числовым passphrase.
-3. Убрать жёсткий 60-секундный порог Web UI:
+- [x] Убрать жёсткий 60-секундный порог Web UI:
    - публиковать ожидаемый heartbeat/max-age в `health.json`;
    - рассчитывать его из manager poll interval с безопасным минимальным запасом;
    - использовать опубликованное значение в Web UI.
-4. Фильтровать deploy source tree: не переносить `__pycache__`, `*.pyc`, тестовые
+- [x] Фильтровать deploy source tree: не переносить `__pycache__`, `*.pyc`, тестовые
    caches и другие неописанные runtime-артефакты.
-5. Заменить production hostname в нормативной документации нейтральным примером.
+- [x] Заменить production hostname в нормативной документации нейтральным примером.
 
 ### Приёмка
 
@@ -243,7 +248,8 @@ Findings: F-12, F-15 и замечание о форматировании.
 
 ## Чек-лист прогресса
 
-- [ ] R1 — совместимость, секреты и воспроизводимость
+- [ ] R1 — совместимость, секреты и воспроизводимость (реализация готова; ожидается
+  Python 3.12 acceptance)
 - [ ] R2 — runtime journal и Logs UI
 - [ ] R3 — длинные операции и lifecycle
 - [ ] R4 — CLI-контракты

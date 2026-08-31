@@ -162,6 +162,7 @@ class HealthProjection(PublicModel):
     manager_state: Literal["starting", "idle", "running", "stopping", "error"]
     manager_started_at: AwareDatetime
     version: str
+    status_stale_after_seconds: int = Field(gt=0)
 
 
 class ProjectionPublisher:

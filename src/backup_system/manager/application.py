@@ -120,6 +120,7 @@ class ManagerApplication:
             smart_stale_after_hours=(
                 smart_config.stale_after_hours if smart_config is not None else 48
             ),
+            status_stale_after_seconds=max(60, config.scheduler.poll_seconds * 3),
         )
         self._projection_publisher = ProjectionPublisher(layout.public)
 

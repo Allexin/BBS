@@ -9,7 +9,15 @@ from uuid import UUID
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from croniter import croniter
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    SecretStr,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 from backup_system.common.excludes import validate_exclude_pattern
 
@@ -46,6 +54,12 @@ def _validate_timezone(value: str) -> str:
     return value
 
 
+def _validate_cron(value: str) -> str:
+    if not croniter.is_valid(value):
+        raise ValueError("invalid cron expression")
+    return value
+
+
 class CycleItem(StrictModel):
     operation: Literal["backup", "check", "prune", "smart-test"]
     mode: Literal["metadata", "subset", "full"] | None = None
@@ -66,13 +80,7 @@ class ScheduleConfig(StrictModel):
     cycle: tuple[CycleItem, ...] = Field(min_length=1)
 
     _valid_timezone = field_validator("timezone")(_validate_timezone)
-
-    @field_validator("cron")
-    @classmethod
-    def validate_cron(cls, value: str) -> str:
-        if not croniter.is_valid(value):
-            raise ValueError("invalid cron expression")
-        return value
+    _valid_cron = field_validator("cron")(_validate_cron)
 
 
 class ManagerJobConfig(StrictModel):
@@ -130,7 +138,7 @@ class TelegramConfig(StrictModel):
     daily_report_timezone: str
     stale_manager_minutes: int = Field(gt=0)
 
-    _valid_cron = field_validator("daily_report_cron")(ScheduleConfig.validate_cron)
+    _valid_cron = field_validator("daily_report_cron")(_validate_cron)
     _valid_timezone = field_validator("daily_report_timezone")(_validate_timezone)
 
     @field_validator("credentials_file")
@@ -171,7 +179,7 @@ class SourceConfig(StrictModel):
 
 class EncryptionConfig(StrictModel):
     mode: Literal["none", "password"]
-    passphrase: str | None = Field(default=None, min_length=1)
+    passphrase: SecretStr | None = Field(default=None, min_length=1)
 
     @model_validator(mode="after")
     def validate_passphrase(self) -> EncryptionConfig:

@@ -32,7 +32,7 @@ def restic_auth_arguments(
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
         with os.fdopen(descriptor, "w", encoding="utf-8", newline="\n") as stream:
-            stream.write(encryption.passphrase)
+            stream.write(encryption.passphrase.get_secret_value())
             stream.write("\n")
             stream.flush()
             os.fsync(stream.fileno())

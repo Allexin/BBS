@@ -58,6 +58,7 @@ class ProjectionBuilder:
         disk_health_policies: dict[str, tuple[bool, str]] | None = None,
         smart_stale_after_hours: int = 48,
         volume_stale_after_seconds: int = 120,
+        status_stale_after_seconds: int = 60,
     ) -> None:
         self._connection = connection
         self._job_kinds = job_kinds or {}
@@ -71,6 +72,9 @@ class ProjectionBuilder:
         if volume_stale_after_seconds <= 0:
             raise ValueError("volume stale threshold must be positive")
         self._volume_stale_after = timedelta(seconds=volume_stale_after_seconds)
+        if status_stale_after_seconds <= 0:
+            raise ValueError("status stale threshold must be positive")
+        self._status_stale_after_seconds = status_stale_after_seconds
 
     def build(
         self,
@@ -123,6 +127,7 @@ class ProjectionBuilder:
             manager_state=manager_state,
             manager_started_at=_utc(manager_started_at),
             version=version,
+            status_stale_after_seconds=self._status_stale_after_seconds,
         )
         return status, health
 
