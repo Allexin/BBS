@@ -1,3 +1,4 @@
+import json
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -140,6 +141,13 @@ def test_remove_and_cancel_commands_dispatch_to_typed_handlers(tmp_path: Path) -
             CommandDisposition.CANCEL_REQUESTED,
         }
         assert cancelled == [True]
+        result = json.loads(
+            (layout.commands_completed / f"{remove.command_id}.result.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        assert result["disposition"] == "removed"
+        assert result["operation_id"] == str(queued.operation_id)
     finally:
         connection.close()
 

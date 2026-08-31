@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import os
 from datetime import datetime, timedelta
 from pathlib import Path
 from uuid import UUID, uuid4
@@ -65,6 +67,35 @@ class CommandSpool:
         source = self._layout.commands_accepted / f"{command_id}.json"
         destination = self._layout.commands_completed / source.name
         source.rename(destination)
+        return destination
+
+    def write_result(
+        self,
+        command_id: UUID,
+        *,
+        disposition: str,
+        operation_id: UUID | None,
+    ) -> Path:
+        command_id = parse_uuid4(str(command_id))
+        destination = self._layout.commands_completed / f"{command_id}.result.json"
+        temporary = self._layout.temp / f"command-result-{command_id}-{uuid4()}.tmp"
+        payload = json.dumps(
+            {
+                "schema_version": 1,
+                "command_id": str(command_id),
+                "disposition": disposition,
+                "operation_id": str(operation_id) if operation_id is not None else None,
+            },
+            separators=(",", ":"),
+        ).encode("utf-8")
+        try:
+            with temporary.open("xb") as stream:
+                stream.write(payload)
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, destination)
+        finally:
+            temporary.unlink(missing_ok=True)
         return destination
 
     def mark_rejected(self, command_id: UUID) -> Path:

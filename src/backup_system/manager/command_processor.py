@@ -61,6 +61,11 @@ class CommandProcessor:
                 )
                 continue
             self._spool.mark_completed(command.command_id)
+            self._spool.write_result(
+                command.command_id,
+                disposition=outcome.disposition,
+                operation_id=outcome.operation_id,
+            )
             processed.append(outcome)
         return tuple(processed)
 

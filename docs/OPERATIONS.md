@@ -93,6 +93,26 @@ users.
 There is no automatic rollback. A failure after the switch leaves the new files and
 the actual stopped/failed service state visible. Correct the cause and deploy again.
 
+## Local queue and disk status
+
+`backupctl disk status <job-id>` is a read-only command. It prints one JSON object.
+Always-online jobs report `managed_disk:false` and `state:"not_managed"`. Jobs with a
+managed offline disk report their configured mount point, expected size, repository
+path timeout and any active safety latch. Physical serials and partition/volume GUIDs
+are never printed. Invalid or missing job configuration returns a non-zero exit code.
+
+`backupctl queue remove <operation-id>` publishes a spool command and waits at most
+30 seconds for the manager's durable result. `--wait-timeout-seconds` changes this
+bound. The final line is a machine-readable JSON result. Exit codes are:
+
+- `0`: `removed`;
+- `2`: `not_found`;
+- `3`: `not_queued` (including an operation already running or terminal);
+- `30`: manager unavailable, timeout, invalid result, or another manager error.
+
+Removing a queued operation never cancels running work. Use `backupctl cancel-current`
+for the active operation.
+
 ## Important logs and state
 
 - `data\logs\bootstrap.jsonl`: fatal pre-database startup diagnostics.

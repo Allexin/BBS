@@ -76,3 +76,11 @@ class LocalStateReader:
                 value["position"] = 0
             operations.append(value)
         return {"schema_version": 1, "operations": operations}
+
+    def disk_latch(self, job_id: str) -> dict[str, Any] | None:
+        row = self._connection.execute(
+            """SELECT reason, created_at FROM safety_latches
+            WHERE job_id = ? AND cleared_at IS NULL ORDER BY created_at DESC LIMIT 1""",
+            (job_id,),
+        ).fetchone()
+        return dict(row) if row is not None else None

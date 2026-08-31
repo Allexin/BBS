@@ -172,18 +172,21 @@ Findings: F-06, F-07, F-08, F-10, F-11.
 
 Findings: F-04, F-05.
 
+**Статус: завершён.** Полный gate на Python 3.12 и 3.13: 420 tests collected,
+412 passed, 8 skipped; `ruff check` и `mypy` проходят на обеих версиях.
+
 ### Работы
 
-1. Реализовать `backupctl disk status <job-id>`:
+- [x] Реализовать `backupctl disk status <job-id>`:
    - вернуть структурированный read-only статус;
    - различать unknown job, job без managed disk и ошибку чтения;
    - согласовать поля и exit codes с дизайн-документом.
-2. Реализовать результат `backupctl queue remove`:
+- [x] Реализовать результат `backupctl queue remove`:
    - команда должна дождаться bounded результата manager;
    - результаты: `removed`, `not_found`, `not_queued`, manager unavailable/error;
    - каждый результат получает документированный exit code;
    - ожидание имеет timeout и не превращается в бесконечный poll.
-3. Обновить CLI contract tests и operator documentation.
+- [x] Обновить CLI contract tests и operator documentation.
 
 ### Приёмка
 
@@ -259,6 +262,6 @@ Findings: F-12, F-15 и замечание о форматировании.
 - [x] R1 — совместимость, секреты и воспроизводимость
 - [x] R2 — runtime journal и Logs UI
 - [x] R3 — длинные операции и lifecycle
-- [ ] R4 — CLI-контракты
+- [x] R4 — CLI-контракты
 - [ ] R5 — security hardening и форматирование
 - [ ] R6 — повторное ревью и production acceptance
