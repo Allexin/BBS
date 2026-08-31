@@ -84,10 +84,9 @@ def run_snapshot_operation(
         )
     if operation != "run":
         raise SnapshotRuntimeError(f"unsupported snapshot operation: {operation}")
-    return windows_job.run(
+    return windows_job.run_destination(
         config=config,
         smart_config=smart_config,
-        run_id=run_id,
         adapter=lambda context: adapter.backup(config, source_root=Path(context.source_root)),
     )
 

@@ -190,6 +190,13 @@ intents хранятся в `data/state/executor/vss-intents`, а cursors/gates 
 `data/state/executor/snapshot-jobs`. Совпадение job ID не может приводить к перезаписи
 доказательства владения VSS snapshot set.
 
+Для restic snapshot job executor передаёт исходный локальный Windows path и обязательный
+`--use-fs-snapshot`; создание, использование и cleanup VSS выполняет штатный Windows
+backend restic. Raw `GLOBALROOT` path не передаётся как CLI source, поскольку restic
+сам выполняет корректное отображение исходного пути в созданный shadow. Собственный
+owned-VSS lifecycle BBS используется mirror adapter, которому требуется явный shadow
+root для файлового алгоритма.
+
 Manager не импортирует модули executor и не разбирает операционный конфиг. Его конфигурация содержит только:
 
 - `job_id`;

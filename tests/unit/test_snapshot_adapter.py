@@ -99,6 +99,7 @@ def test_backup_runs_snapshot_then_retention_then_observation(tmp_path: Path) ->
     assert result.snapshot_id == "abc"
     assert result.snapshots == ("abcdef",)
     assert [command[3] for command in runner.commands] == ["backup", "forget", "snapshots"]
+    assert "--use-fs-snapshot" in runner.commands[0]
     assert "--keep-weekly" in runner.commands[1]
     source = (tmp_path / "shadow").resolve()
     expected = source.joinpath("Cache").as_posix()

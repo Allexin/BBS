@@ -97,6 +97,7 @@ class SnapshotAdapter:
                     *base,
                     "backup",
                     "--json",
+                    "--use-fs-snapshot",
                     "--host",
                     config.backup.host,
                     "--tag",
