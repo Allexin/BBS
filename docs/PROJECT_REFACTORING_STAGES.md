@@ -133,26 +133,30 @@ strict `mypy` прошли, `pytest`: 405 passed, 8 skipped на каждой л
 
 Findings: F-06, F-07, F-08, F-10, F-11.
 
+Статус: **завершён 2026-08-31**. Gates на Python 3.13.5 и Python 3.12.10:
+`ruff check .` и strict `mypy` прошли, `pytest`: 409 passed, 8 skipped на каждой
+поддерживаемой линии.
+
 ### Работы
 
-1. Ограничить ожидание service start в updater:
+- [x] Ограничить ожидание service start в updater:
    - выводить текущий статус во время ожидания;
    - ввести явный настраиваемый timeout;
    - возвращать различимый ненулевой exit code при timeout/start failure;
    - сохранить ручной запуск сервиса как допустимый deployment workflow.
-2. Переработать Telegram dispatcher:
+- [x] Переработать Telegram dispatcher:
    - проверять наличие due notification через существующее manager connection;
    - не открывать и не мигрировать SQLite каждые пять секунд;
    - не создавать HTTP client при пустой outbox;
    - определить и протестировать жизненный цикл HTTP client.
-3. Оптимизировать restore progress:
+- [x] Оптимизировать restore progress:
    - вычислять total bytes один раз до цикла;
    - ограничить progress events по времени и/или числу файлов;
    - гарантировать первый и финальный progress event;
    - не выполнять SQLite FULL transaction на каждый восстановленный файл.
-4. Ввести ограничение размера/ротацию `executor-stderr.log` без потери последней
+- [x] Ввести ограничение размера/ротацию `executor-stderr.log` без потери последней
    диагностической информации.
-5. Хранить cancellation task, наблюдать её исключение и дожидаться завершения при
+- [x] Хранить cancellation task, наблюдать её исключение и дожидаться завершения при
    shutdown.
 
 ### Приёмка
@@ -254,7 +258,7 @@ Findings: F-12, F-15 и замечание о форматировании.
 
 - [x] R1 — совместимость, секреты и воспроизводимость
 - [x] R2 — runtime journal и Logs UI
-- [ ] R3 — длинные операции и lifecycle
+- [x] R3 — длинные операции и lifecycle
 - [ ] R4 — CLI-контракты
 - [ ] R5 — security hardening и форматирование
 - [ ] R6 — повторное ревью и production acceptance

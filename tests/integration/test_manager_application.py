@@ -12,7 +12,7 @@ from backup_system.common.events import (
     RunStarted,
 )
 from backup_system.common.ids import new_command_id
-from backup_system.manager.application import ManagerApplication
+from backup_system.manager.application import ManagerApplication, _append_rotating_log
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.executor_process import ExecutorProcessResult
 from backup_system.manager.journal import JournalWriter
@@ -21,12 +21,22 @@ from backup_system.manager.log_projection import LogProjectionPublisher, PublicL
 from backup_system.manager.notifications import NotificationRepository
 from backup_system.manager.operations import OperationsRepository
 from backup_system.manager.service import ServiceLifecycle
+from backup_system.manager.telegram import DispatchResult
 
 
 class _FailingPublisher:
     def publish(self, status: object, health: object) -> None:
         del status, health
         raise PermissionError("projection target is locked")
+
+
+class _RecordingNotificationDispatcher:
+    def __init__(self) -> None:
+        self.calls: list[datetime] = []
+
+    async def dispatch_one(self, *, now: datetime) -> DispatchResult:
+        self.calls.append(now)
+        return DispatchResult.IDLE
 
 
 def _config() -> ManagerConfig:
@@ -80,6 +90,43 @@ def test_projection_failure_does_not_stop_manager(tmp_path: Path, capsys: object
         assert captured.err.count("manager continues") == 1
     finally:
         connection.close()
+
+
+def test_empty_notification_outbox_does_not_start_async_dispatcher(tmp_path: Path) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    operations = OperationsRepository(connection)
+    operations.upsert_job(
+        job_id="data", display_name="Data", enabled=True, config_valid=True
+    )
+    dispatcher = _RecordingNotificationDispatcher()
+    application = ManagerApplication(
+        layout=layout,
+        config=_config(),
+        operations=operations,
+        notification_dispatcher=dispatcher,  # type: ignore[arg-type]
+    )
+    application.initialize()
+    try:
+        assert asyncio.run(application.run_iteration()) is False
+        assert dispatcher.calls == []
+    finally:
+        connection.close()
+
+
+def test_executor_diagnostic_log_keeps_one_bounded_rotation(tmp_path: Path) -> None:
+    path = tmp_path / "executor-stderr.log"
+    _append_rotating_log(path, b"123456", max_bytes=10)
+    _append_rotating_log(path, b"abcdef", max_bytes=10)
+    assert path.read_bytes() == b"abcdef"
+    assert (tmp_path / "executor-stderr.log.1").read_bytes() == b"123456"
+    _append_rotating_log(path, b"uvwxyz", max_bytes=10)
+    assert path.read_bytes() == b"uvwxyz"
+    assert (tmp_path / "executor-stderr.log.1").read_bytes() == b"abcdef"
 
 
 class _SuccessfulExecutor:
@@ -374,7 +421,9 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
         assert not await application.run_iteration()
         await asyncio.wait_for(executor.cancelled.wait(), timeout=1)
         await application.wait_executor()
+        await asyncio.sleep(0)
         assert not application.executor_active
+        assert application.pending_cancellation_count == 0
         assert (layout.commands_completed / f"{cancel.command_id}.json").is_file()
 
     try:

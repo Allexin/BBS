@@ -15,6 +15,7 @@ from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.restore_request import RestoreRequest
 
 _REPARSE_POINT = 0x400
+_PROGRESS_FILE_INTERVAL = 100
 
 
 class RestoreTargetError(RuntimeError):
@@ -113,6 +114,7 @@ class RestoreTarget:
         if set(actual) != set(expected):
             raise RestoreVerificationError("restore result file set changed")
         bytes_done = 0
+        total_bytes = sum(item.size_bytes for item in entries)
         for index, (key, path) in enumerate(actual.items(), start=1):
             item = expected[key]
             if (
@@ -121,11 +123,16 @@ class RestoreTarget:
             ):
                 raise RestoreVerificationError("restored file content does not match backup")
             bytes_done += item.size_bytes
-            self._progress_sink(index, len(entries), bytes_done, sum(e.size_bytes for e in entries))
+            if (
+                index == 1
+                or index == len(entries)
+                or index % _PROGRESS_FILE_INTERVAL == 0
+            ):
+                self._progress_sink(index, len(entries), bytes_done, total_bytes)
         marker = result / ".restore-incomplete"
         marker.unlink()
         _flush_directory(result)
-        return RestoreResult(result, len(entries), sum(item.size_bytes for item in entries))
+        return RestoreResult(result, len(entries), total_bytes)
 
 
 def _validate_parent(parent: Path, forbidden_roots: Iterable[Path]) -> None:

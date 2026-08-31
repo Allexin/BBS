@@ -6,7 +6,9 @@ import asyncio
 import json
 import os
 import sys
+import threading
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Protocol
@@ -62,6 +64,8 @@ ExecutorFactory = Callable[
     ExecutorTransport,
 ]
 
+_EXECUTOR_LOG_MAX_BYTES = 10 * 1024 * 1024
+
 
 def _default_executor_factory(
     on_event: Callable[[KnownExecutorEvent | UnknownExecutorEvent], None],
@@ -100,12 +104,15 @@ class ManagerApplication:
         self._accepting = True
         self._active_executor: ExecutorTransport | None = None
         self._active_task: asyncio.Task[None] | None = None
+        self._cancellation_tasks: set[asyncio.Task[bool]] = set()
         self._started_at = utc_now()
         self._last_health = "unknown"
         self._projection_failure_reported = False
+        self._diagnostic_lock = threading.Lock()
         selected_job_kinds = job_kinds or {}
         connection = operations.connection
         notifications = NotificationRepository(connection)
+        self._notifications = notifications
         self._spool = CommandSpool(layout)
         self._commands = CommandProcessor(
             self._spool,
@@ -150,6 +157,10 @@ class ManagerApplication:
     @property
     def executor_active(self) -> bool:
         return self._active_task is not None and not self._active_task.done()
+
+    @property
+    def pending_cancellation_count(self) -> int:
+        return len(self._cancellation_tasks)
 
     def initialize(self) -> None:
         now = utc_now()
@@ -226,12 +237,26 @@ class ManagerApplication:
     def request_executor_cancel(self) -> None:
         executor = self._active_executor
         if executor is not None:
-            asyncio.get_running_loop().create_task(executor.cancel_current())
+            task = asyncio.get_running_loop().create_task(executor.cancel_current())
+            self._cancellation_tasks.add(task)
+            task.add_done_callback(self._cancellation_finished)
 
     async def cancel_executor(self) -> None:
         executor = self._active_executor
         if executor is not None:
             await executor.cancel_current()
+        pending = tuple(self._cancellation_tasks)
+        if pending:
+            await asyncio.gather(*pending, return_exceptions=True)
+
+    def _cancellation_finished(self, task: asyncio.Task[bool]) -> None:
+        self._cancellation_tasks.discard(task)
+        with suppress(asyncio.CancelledError):
+            error = task.exception()
+            if error is not None:
+                self._write_executor_diagnostic(
+                    f"executor cancellation failed: {type(error).__name__}\n".encode("ascii")
+                )
 
     async def wait_executor(self) -> None:
         task = self._active_task
@@ -395,9 +420,8 @@ class ManagerApplication:
 
     def _write_executor_diagnostic(self, chunk: bytes) -> None:
         path = self._layout.logs / "executor-stderr.log"
-        with path.open("ab") as stream:
-            stream.write(chunk)
-            stream.flush()
+        with self._diagnostic_lock:
+            _append_rotating_log(path, chunk, max_bytes=_EXECUTOR_LOG_MAX_BYTES)
 
     def _journal_executor_event(
         self, claimed: ClaimedRun, event: KnownExecutorEvent
@@ -476,7 +500,7 @@ class ManagerApplication:
 
     async def _dispatch_notification(self, now: datetime) -> None:
         dispatcher = self._notification_dispatcher
-        if dispatcher is None:
+        if dispatcher is None or self._notifications.next_due(now=now) is None:
             return
         try:
             await dispatcher.dispatch_one(now=now)
@@ -484,6 +508,19 @@ class ManagerApplication:
             self._write_executor_diagnostic(
                 f"notification dispatcher failed: {type(error).__name__}\n".encode("ascii")
             )
+
+
+def _append_rotating_log(path: Path, chunk: bytes, *, max_bytes: int) -> None:
+    if max_bytes <= 0:
+        raise ValueError("log size limit must be positive")
+    payload = chunk[-max_bytes:]
+    current_size = path.stat().st_size if path.is_file() else 0
+    if current_size and current_size + len(payload) > max_bytes:
+        os.replace(path, path.with_name(f"{path.name}.1"))
+    with path.open("ab") as stream:
+        stream.write(payload)
+        stream.flush()
+
 
 def _executor_operation(kind: str) -> str:
     return "run" if kind == "backup" else kind

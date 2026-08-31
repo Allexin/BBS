@@ -30,12 +30,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--service", default="BBS")
     parser.add_argument("--nssm", type=Path, required=True)
     parser.add_argument("--uv", type=Path, required=True)
+    parser.add_argument("--wait-timeout-seconds", type=int, default=600)
     return parser
 
 
 def update(
-    *, source: Path, stable: Path, service: str, nssm: Path, uv: Path
+    *,
+    source: Path,
+    stable: Path,
+    service: str,
+    nssm: Path,
+    uv: Path,
+    wait_timeout_seconds: int = 600,
 ) -> str:
+    if wait_timeout_seconds <= 0:
+        raise UpdateError("service wait timeout must be positive")
     print("[1/7] Validating Dev and Stable paths...", flush=True)
     source = source.resolve(strict=True)
     stable = stable.resolve(strict=True)
@@ -89,8 +98,23 @@ def update(
         "waiting for SERVICE_RUNNING.",
         flush=True,
     )
+    started_waiting = time.monotonic()
+    last_reported_second = -1
     while (status := _service_status(nssm, service)) != SERVICE_RUNNING:
-        print(f"Waiting for {service!r}: current status is {status}", flush=True)
+        elapsed = int(time.monotonic() - started_waiting)
+        if elapsed >= wait_timeout_seconds:
+            raise UpdateError(
+                f"service {service!r} did not reach {SERVICE_RUNNING} within "
+                f"{wait_timeout_seconds} seconds; current status is {status}"
+            )
+        if elapsed == 0 or elapsed - last_reported_second >= 5:
+            remaining = wait_timeout_seconds - elapsed
+            print(
+                f"Waiting for {service!r}: current status is {status}; "
+                f"timeout in {remaining}s",
+                flush=True,
+            )
+            last_reported_second = elapsed
         time.sleep(1)
     return revision
 
@@ -151,6 +175,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             service=arguments.service,
             nssm=arguments.nssm,
             uv=arguments.uv,
+            wait_timeout_seconds=arguments.wait_timeout_seconds,
         )
     except (OSError, ValueError, UpdateError) as error:
         print(json.dumps({"result": "failed", "error": str(error)}, ensure_ascii=False))

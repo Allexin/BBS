@@ -73,3 +73,23 @@ def test_existing_result_is_never_reused(tmp_path: Path) -> None:
     with pytest.raises(RestoreTargetError, match="already exists"):
         target.create(request, forbidden_roots=[], required_bytes=None)
     assert (first / ".restore-incomplete").exists()
+
+
+def test_verification_progress_is_bounded_and_includes_endpoints(tmp_path: Path) -> None:
+    progress: list[tuple[int, int, int, int]] = []
+    target = RestoreTarget(
+        CancellationToken(), progress_sink=lambda *values: progress.append(values)
+    )
+    result = target.create(_request(tmp_path), forbidden_roots=[], required_bytes=None)
+    manifest: list[RestoreManifestEntry] = []
+    for index in range(205):
+        name = f"file-{index:03}.txt"
+        content = bytes([index % 251])
+        (result / name).write_bytes(content)
+        manifest.append(RestoreManifestEntry(name, 1, hashlib.sha256(content).digest()))
+
+    outcome = target.verify_and_complete(result, manifest)
+
+    assert [item[0] for item in progress] == [1, 100, 200, 205]
+    assert progress[-1] == (205, 205, 205, 205)
+    assert outcome.logical_bytes == 205
