@@ -83,6 +83,7 @@ class ManagerApplication:
         self._active_task: asyncio.Task[None] | None = None
         self._started_at = utc_now()
         self._last_health = "unknown"
+        self._projection_failure_reported = False
         selected_job_kinds = job_kinds or {}
         connection = operations.connection
         notifications = NotificationRepository(connection)
@@ -167,7 +168,18 @@ class ManagerApplication:
             version=__version__,
         )
         self._last_health = status.overall_health
-        self._projection_publisher.publish(status, health)
+        try:
+            self._projection_publisher.publish(status, health)
+        except OSError as error:
+            if not self._projection_failure_reported:
+                print(
+                    f"status projection publication failed; manager continues: {error}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+                self._projection_failure_reported = True
+        else:
+            self._projection_failure_reported = False
 
     def request_executor_cancel(self) -> None:
         executor = self._active_executor

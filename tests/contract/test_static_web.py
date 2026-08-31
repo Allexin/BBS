@@ -46,3 +46,4 @@ def test_status_ui_shows_active_job_heartbeat_in_job_card() -> None:
     script = (WEB / "status.js").read_text(encoding="utf-8")
     assert 'addFact(facts,"Current status",operationStatus(current))' in script
     assert "heartbeat ${age(progress.updated_at)}" in script
+    assert "status heartbeat is stale" in script

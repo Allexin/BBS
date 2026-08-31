@@ -21,6 +21,12 @@ from backup_system.manager.operations import OperationsRepository
 from backup_system.manager.service import ServiceLifecycle
 
 
+class _FailingPublisher:
+    def publish(self, status: object, health: object) -> None:
+        del status, health
+        raise PermissionError("projection target is locked")
+
+
 def _config() -> ManagerConfig:
     return ManagerConfig.model_validate(
         {
@@ -49,6 +55,29 @@ def _config() -> ManagerConfig:
             },
         }
     )
+
+
+def test_projection_failure_does_not_stop_manager(tmp_path: Path, capsys: object) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    operations = OperationsRepository(connection)
+    operations.upsert_job(
+        job_id="data", display_name="Data", enabled=True, config_valid=True
+    )
+    application = ManagerApplication(layout=layout, config=_config(), operations=operations)
+    application._projection_publisher = _FailingPublisher()  # type: ignore[assignment]
+    try:
+        asyncio.run(application.publish("running"))
+        asyncio.run(application.publish("running"))
+        assert application.accepting
+        captured = capsys.readouterr()  # type: ignore[attr-defined]
+        assert captured.err.count("manager continues") == 1
+    finally:
+        connection.close()
 
 
 class _SuccessfulExecutor:

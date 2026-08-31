@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 from typing import Literal
 from uuid import UUID
@@ -164,8 +165,20 @@ class HealthProjection(PublicModel):
 
 
 class ProjectionPublisher:
-    def __init__(self, public_directory: Path) -> None:
+    def __init__(
+        self,
+        public_directory: Path,
+        *,
+        replace_attempts: int = 5,
+        retry_delay_seconds: float = 0.1,
+    ) -> None:
+        if replace_attempts < 1:
+            raise ValueError("replace_attempts must be positive")
+        if retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds cannot be negative")
         self._public_directory = public_directory
+        self._replace_attempts = replace_attempts
+        self._retry_delay_seconds = retry_delay_seconds
 
     def publish(self, status: StatusProjection, health: HealthProjection) -> None:
         if status.generation_id != health.generation_id:
@@ -176,8 +189,7 @@ class ProjectionPublisher:
         self._replace_json(self._public_directory / "status.json", status)
         self._replace_json(self._public_directory / "health.json", health)
 
-    @staticmethod
-    def _replace_json(path: Path, value: PublicModel) -> None:
+    def _replace_json(self, path: Path, value: PublicModel) -> None:
         temporary = path.with_name(f".{path.name}.{value.model_dump()['generation_id']}.tmp")
         data = json.dumps(
             value.model_dump(mode="json"),
@@ -190,6 +202,18 @@ class ProjectionPublisher:
                 stream.write(data)
                 stream.flush()
                 os.fsync(stream.fileno())
-            os.replace(temporary, path)
+            for attempt in range(self._replace_attempts):
+                try:
+                    os.replace(temporary, path)
+                    break
+                except OSError as error:
+                    attempts_exhausted = attempt + 1 >= self._replace_attempts
+                    if not _is_retryable_replace_error(error) or attempts_exhausted:
+                        raise
+                    time.sleep(self._retry_delay_seconds * (attempt + 1))
         finally:
             temporary.unlink(missing_ok=True)
+
+
+def _is_retryable_replace_error(error: OSError) -> bool:
+    return isinstance(error, PermissionError) or getattr(error, "winerror", None) in {5, 32}

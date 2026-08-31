@@ -84,3 +84,25 @@ def test_failed_replace_preserves_previous_valid_json(
     assert (tmp_path / "status.json").read_bytes() == original
     assert json.loads(original)["generation_id"] == str(old_status.generation_id)
     assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_publisher_retries_transient_windows_file_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    status, health = _projections(uuid4())
+    original_replace = os.replace
+    attempts = 0
+
+    def transient_lock(source: Path, destination: Path) -> None:
+        nonlocal attempts
+        attempts += 1
+        if attempts <= 2:
+            error = PermissionError("temporarily locked")
+            error.winerror = 5
+            raise error
+        original_replace(source, destination)
+
+    monkeypatch.setattr(os, "replace", transient_lock)
+    ProjectionPublisher(tmp_path, retry_delay_seconds=0).publish(status, health)
+    assert attempts == 4
+    assert (tmp_path / "health.json").is_file()
