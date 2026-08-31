@@ -24,6 +24,7 @@ from backup_system.manager.public_projection import (
     PublicVolume,
     StatusProjection,
 )
+from backup_system.manager.safety import SafetyLatchRepository
 
 _SEVERITY = {"healthy": 0, "unknown": 1, "warning": 2, "critical": 3}
 _REGRESSION_FIELDS = (
@@ -85,7 +86,23 @@ class ProjectionBuilder:
         disks, disk_issues = self._disks(timestamp)
         operations = self._operations(timestamp)
         volumes = self._volumes(timestamp)
-        issues = (*job_issues, *disk_issues)
+        latch = SafetyLatchRepository(self._connection).active()
+        latch_issues = (
+            (
+                PublicHealthIssue(
+                    severity="critical",
+                    kind="safety-latch",
+                    subject=latch.job_id,
+                    summary=(
+                        "Backup queue blocked: backup disk offline was not confirmed; "
+                        f"manual recovery required ({latch.reason})"
+                    ),
+                ),
+            )
+            if latch is not None
+            else ()
+        )
+        issues = (*job_issues, *disk_issues, *latch_issues)
         overall = _overall_health(jobs, disks, issues)
         status = StatusProjection(
             generation_id=generation_id,
@@ -110,6 +127,7 @@ class ProjectionBuilder:
         return status, health
 
     def _operations(self, now: datetime) -> tuple[PublicOperation, ...]:
+        latch = SafetyLatchRepository(self._connection).active()
         rows = self._connection.execute(
             """SELECT operations.operation_id, jobs.display_name, operations.kind,
                 operations.trigger_source, operations.state, operations.queued_at,
@@ -146,6 +164,11 @@ class ProjectionBuilder:
                     stage=str(row[6]) if row[6] is not None else None,
                     elapsed_seconds=max(0, int((now - since).total_seconds())),
                     executor_state="running" if running else "not_started",
+                    blocked_reason=(
+                        f"Blocked by disk safety latch for {latch.job_id}; recovery required"
+                        if not running and latch is not None and str(row[2]) != "recover"
+                        else None
+                    ),
                     progress=progress,
                 )
             )

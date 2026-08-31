@@ -340,7 +340,7 @@ def _execute_operation(
         for event in build_smart_events(observations, timestamp=utc_now()):
             sink.emit(event)
 
-    outcome = ExecutorRunReporter(sink).execute(
+    outcome = ExecutorRunReporter(sink, error_sink=_write_failure_diagnostic).execute(
         run_id=run_id,
         job_id=job_id,
         operation=lambda: operation(token, smart_sink, sink.emit),
@@ -374,10 +374,22 @@ def _execute_recovery(
             raise LifecycleOperationError(error) from error
         return value
 
-    outcome = ExecutorRunReporter(JsonLineEventSink(output_stream)).execute(
+    outcome = ExecutorRunReporter(
+        JsonLineEventSink(output_stream), error_sink=_write_failure_diagnostic
+    ).execute(
         run_id=run_id,
         job_id=job_id,
         operation=checked_operation,
     )
     monitor.wait(timeout_seconds=5)
     return int(outcome.exit_code)
+
+
+def _write_failure_diagnostic(error: BaseException) -> None:
+    chain: list[str] = []
+    current: BaseException | None = error
+    while current is not None and len(chain) < 6:
+        chain.append(f"{type(current).__name__}: {current}")
+        current = current.__cause__ or current.__context__
+    diagnostic = " <- ".join(chain)
+    print(f"executor operation failed: {diagnostic[:4000]}", file=sys.stderr, flush=True)

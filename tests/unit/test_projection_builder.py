@@ -1,10 +1,12 @@
 import json
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from uuid import UUID
 
 from backup_system.manager.database import open_manager_database
 from backup_system.manager.operations import OperationsRepository, RunResult
 from backup_system.manager.projection_builder import ProjectionBuilder
+from backup_system.manager.safety import SafetyLatchRepository
 from backup_system.manager.smart_history import SmartHistoryRepository, SmartMetrics
 
 
@@ -150,6 +152,35 @@ def test_builder_uses_unknown_instead_of_inventing_missing_data(tmp_path: Path) 
         assert status.jobs[0].kind == "unknown"
         assert status.jobs[0].health == "unknown"
         assert status.jobs[0].last_run is None
+    finally:
+        connection.close()
+
+
+def test_active_safety_latch_is_critical_and_explains_queued_work(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    now = datetime(2026, 8, 28, tzinfo=UTC)
+    try:
+        operations = OperationsRepository(connection)
+        operations.upsert_job(
+            job_id="data", display_name="Data", enabled=True, config_valid=True
+        )
+        operations.enqueue(
+            deduplication_key="queued", job_id="data", kind="backup",
+            trigger_source="manual", queued_at=now,
+        )
+        with connection:
+            SafetyLatchRepository(connection).set_disk_lifecycle_in_transaction(
+                job_id="data", source_run_id=UUID(int=9),
+                reason="offline_not_confirmed", created_at=now,
+            )
+
+        status, _ = ProjectionBuilder(connection).build(
+            now=now, manager_started_at=now, manager_state="idle", version="test"
+        )
+
+        assert status.overall_health == "critical"
+        assert status.health_issues[-1].kind == "safety-latch"
+        assert status.operations[0].blocked_reason is not None
     finally:
         connection.close()
 

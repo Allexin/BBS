@@ -70,7 +70,18 @@ async def run_service(
     initialize_data_layout(layout)
     connection = open_manager_database(layout.database)
     try:
-        operations = OperationsRepository(connection, NotificationRepository(connection))
+        executor_configs = {
+            job.id: validate_job_with_owner(layout.config, job.id) for job in config.jobs
+        }
+        operations = OperationsRepository(
+            connection,
+            NotificationRepository(connection),
+            managed_disk_jobs={
+                job_id
+                for job_id, executor_config in executor_configs.items()
+                if getattr(executor_config, "disk", None) is not None
+            },
+        )
         for job in config.jobs:
             operations.upsert_job(
                 job_id=job.id,
@@ -87,8 +98,8 @@ async def run_service(
             config=config,
             operations=operations,
             job_kinds={
-                job.id: validate_job_with_owner(layout.config, job.id).kind
-                for job in config.jobs
+                job_id: executor_config.kind
+                for job_id, executor_config in executor_configs.items()
             },
             job_protection_info=job_protection_info(layout.config, config),
             notification_dispatcher=notification_dispatcher,

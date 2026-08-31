@@ -59,9 +59,11 @@ class ExecutorRunReporter:
         sink: EventSink,
         *,
         clock: Callable[[], datetime] = utc_now,
+        error_sink: Callable[[BaseException], None] | None = None,
     ) -> None:
         self._sink = sink
         self._clock = clock
+        self._error_sink = error_sink or (lambda error: None)
 
     def execute(
         self,
@@ -76,6 +78,7 @@ class ExecutorRunReporter:
         try:
             operation()
         except BaseException as error:
+            self._error_sink(error)
             outcome = _failure_outcome(error)
         else:
             outcome = ExecutorOutcome("success", ExecutorExitCode.SUCCESS, True)

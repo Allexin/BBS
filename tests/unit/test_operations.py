@@ -210,6 +210,38 @@ def test_failed_run_and_unconfirmed_offline_queue_immediate_alerts(tmp_path: Pat
         connection.close()
 
 
+def test_always_online_failure_never_sets_disk_lifecycle_latch(tmp_path: Path) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    notifications = NotificationRepository(connection)
+    repository = OperationsRepository(
+        connection, notifications, managed_disk_jobs=set()
+    )
+    repository.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+    try:
+        repository.enqueue(
+            deduplication_key="manual:failed-online",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+        )
+        run = repository.claim_next()
+        assert run is not None
+        repository.finish_run(
+            run.run_id,
+            result=RunResult.FAILED,
+            exit_code=30,
+            disk_offline_confirmed=False,
+        )
+
+        assert SafetyLatchRepository(connection).active() is None
+        assert connection.execute("SELECT disk_offline_confirmed FROM runs").fetchone() == (1,)
+        assert connection.execute("SELECT kind FROM notifications").fetchall() == [
+            ("run_failed",)
+        ]
+    finally:
+        connection.close()
+
+
 def test_remove_changes_only_queued_operation_and_allows_new_work(tmp_path: Path) -> None:
     repository, connection = _repository(tmp_path / "manager.sqlite3")
     try:

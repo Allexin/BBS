@@ -65,6 +65,23 @@ def test_unexpected_error_does_not_leak_diagnostic_text_to_stdout_json() -> None
     assert outcome.exit_code == ExecutorExitCode.INTERNAL_ERROR
 
 
+def test_every_failure_is_sent_to_private_diagnostic_sink() -> None:
+    stream = io.StringIO()
+    errors: list[BaseException] = []
+    reporter = ExecutorRunReporter(
+        JsonLineEventSink(stream), clock=lambda: NOW, error_sink=errors.append
+    )
+
+    reporter.execute(
+        run_id=RUN_ID,
+        job_id="job-1",
+        operation=lambda: (_ for _ in ()).throw(RuntimeError("primary cause")),
+    )
+
+    assert len(errors) == 1
+    assert str(errors[0]) == "primary cause"
+
+
 def test_cooperative_cancellation_has_normalized_exit() -> None:
     def cancel() -> None:
         raise CancellationRequested("requested")

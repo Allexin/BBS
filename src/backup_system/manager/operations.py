@@ -84,9 +84,15 @@ class OperationsRepository:
         self,
         connection: sqlite3.Connection,
         notifications: NotificationRepository | None = None,
+        *,
+        managed_disk_jobs: set[str] | None = None,
     ) -> None:
         self._connection = connection
         self._notifications = notifications
+        self._managed_disk_jobs = managed_disk_jobs
+
+    def _requires_disk_offline(self, job_id: str) -> bool:
+        return self._managed_disk_jobs is None or job_id in self._managed_disk_jobs
 
     @property
     def connection(self) -> sqlite3.Connection:
@@ -434,6 +440,8 @@ class OperationsRepository:
                 raise StateTransitionError("only a running run can be finished")
             operation_id = str(row[0])
             operation_kind = str(row[4])
+            job_id = str(row[3])
+            offline_confirmed = disk_offline_confirmed or not self._requires_disk_offline(job_id)
             if resolved_restore_version is not None:
                 if operation_kind != "resolve-restore" or result is not RunResult.SUCCESS:
                     raise StateTransitionError(
@@ -470,7 +478,7 @@ class OperationsRepository:
                     exit_code,
                     snapshot_id,
                     bytes_added,
-                    int(disk_offline_confirmed),
+                    int(offline_confirmed),
                     exceeded_at,
                     overrun_seconds if exceeded_at is not None else None,
                     str(run_id),
@@ -502,9 +510,9 @@ class OperationsRepository:
                     "timestamp": timestamp,
                 },
             )
-            if not disk_offline_confirmed and operation_kind != "smart-test":
+            if not offline_confirmed and operation_kind != "smart-test":
                 SafetyLatchRepository(self._connection).set_disk_lifecycle_in_transaction(
-                    job_id=str(row[3]),
+                    job_id=job_id,
                     source_run_id=run_id,
                     reason="executor_finished_without_confirmed_offline",
                     created_at=completed_time,
@@ -536,7 +544,7 @@ class OperationsRepository:
                         payload=payload,
                         created_at=completed_time,
                     )
-                if not disk_offline_confirmed and operation_kind != "smart-test":
+                if not offline_confirmed and operation_kind != "smart-test":
                     self._notifications.enqueue_in_transaction(
                         deduplication_key=f"run:{run_id}:disk-offline-unconfirmed",
                         run_id=run_id,
@@ -546,7 +554,7 @@ class OperationsRepository:
                     )
             if (
                 result in {RunResult.SUCCESS, RunResult.WARNING}
-                and disk_offline_confirmed
+                and offline_confirmed
                 and str(row[4]) == "recover"
                 and str(row[5]) == "manual"
             ):
@@ -600,7 +608,11 @@ class OperationsRepository:
                         "timestamp": timestamp,
                     },
                 )
-                if not bool(offline_value) and str(operation_kind) != "smart-test":
+                if (
+                    not bool(offline_value)
+                    and str(operation_kind) != "smart-test"
+                    and self._requires_disk_offline(str(job_value))
+                ):
                     SafetyLatchRepository(self._connection).set_disk_lifecycle_in_transaction(
                         job_id=str(job_value),
                         source_run_id=run_id,

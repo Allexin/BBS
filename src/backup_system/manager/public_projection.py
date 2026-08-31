@@ -74,6 +74,7 @@ class PublicOperation(PublicModel):
     stage: str | None = None
     elapsed_seconds: int = Field(ge=0)
     executor_state: Literal["running", "stopping", "exited", "not_started"]
+    blocked_reason: str | None = None
     progress: PublicProgress | None = None
 
 
