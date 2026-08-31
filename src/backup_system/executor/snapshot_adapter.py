@@ -109,21 +109,22 @@ class SnapshotAdapter:
             )
             snapshot_id, bytes_added = _backup_summary(result.events)
             self._snapshot_sink(snapshot_id, bytes_added)
-            self._stage_sink("retention")
-            retention = _retention_arguments(config.retention)
-            self._run(
-                [
-                    *base,
-                    "forget",
-                    "--json",
-                    "--host",
-                    config.backup.host,
-                    "--tag",
-                    f"job:{config.id}",
-                    *retention,
-                ],
-                config,
-            )
+            if config.retention.mode == "policy":
+                self._stage_sink("retention")
+                retention = _retention_arguments(config.retention)
+                self._run(
+                    [
+                        *base,
+                        "forget",
+                        "--json",
+                        "--host",
+                        config.backup.host,
+                        "--tag",
+                        f"job:{config.id}",
+                        *retention,
+                    ],
+                    config,
+                )
             snapshots = self._snapshot_ids(base, config)
         return SnapshotBackupResult(snapshot_id, bytes_added, snapshots)
 

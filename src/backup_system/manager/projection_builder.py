@@ -53,6 +53,7 @@ class ProjectionBuilder:
         | None = None,
         job_deadlines: dict[str, str | None] | None = None,
         next_operations: dict[str, str] | None = None,
+        job_protection_info: dict[str, str] | None = None,
         disk_health_policies: dict[str, tuple[bool, str]] | None = None,
         smart_stale_after_hours: int = 48,
         volume_stale_after_seconds: int = 120,
@@ -61,6 +62,7 @@ class ProjectionBuilder:
         self._job_kinds = job_kinds or {}
         self._job_deadlines = job_deadlines or {}
         self._next_operations = next_operations or {}
+        self._job_protection_info = job_protection_info or {}
         self._disk_health_policies = disk_health_policies or {}
         if smart_stale_after_hours <= 0:
             raise ValueError("SMART stale threshold must be positive")
@@ -225,6 +227,7 @@ class ProjectionBuilder:
                     health_reason=(
                         f"{reason}: {config_error}" if not config_valid and config_error else reason
                     ),
+                    protection_info=self._job_protection_info.get(job_id),
                     next_fire_at=(
                         datetime.fromisoformat(str(next_fire_at)) if next_fire_at else None
                     ),

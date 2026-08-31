@@ -16,7 +16,11 @@ from backup_system.common.commands import (
     publish_command,
 )
 from backup_system.common.config import validate_job_id
-from backup_system.common.config_io import ConfigLoadError, validate_config_tree
+from backup_system.common.config_io import (
+    ConfigLoadError,
+    config_validation_warnings,
+    validate_config_tree,
+)
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.common.ids import new_command_id, parse_uuid4
 from backup_system.common.runtime import RuntimeRootError, discover_runtime_root
@@ -117,7 +121,10 @@ def main(argv: Sequence[str] | None = None) -> int:
     if arguments.command == "config" and arguments.config_command == "validate":
         try:
             root = discover_runtime_root(Path(sys.executable))
-            validate_config_tree(root / "data" / "config" / "manager.yaml")
+            manager_path = root / "data" / "config" / "manager.yaml"
+            manager, _ = validate_config_tree(manager_path)
+            for warning in config_validation_warnings(manager_path.parent, manager):
+                print(warning)
         except (ConfigLoadError, RuntimeRootError) as error:
             print(str(error), file=sys.stderr)
             return ExecutorExitCode.CONFIG_INVALID

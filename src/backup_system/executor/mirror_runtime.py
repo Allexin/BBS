@@ -13,8 +13,6 @@ from backup_system.executor.mirror_adapter import MirrorAdapter
 from backup_system.executor.mirror_win32 import WindowsMirrorFileOperations
 from backup_system.executor.runtime import build_windows_job
 from backup_system.executor.smart_preflight import SmartPreflightObservation
-from backup_system.executor.source_volume import SourceVolumeResolver
-from backup_system.executor.storage_inventory import WindowsStorageInventory
 from backup_system.executor.windows_job import WindowsDataContext
 
 
@@ -59,7 +57,6 @@ def run_mirror_operation(
         )
     if operation not in {"run", "repair-mirror"}:
         raise MirrorRuntimeError(f"unsupported mirror operation: {operation}")
-    _require_distinct_source_disk(config)
 
     def reconcile(context: WindowsDataContext) -> object:
         source_root = Path(context.source_root)
@@ -93,8 +90,15 @@ def run_mirror_operation(
 
 
 def _validated_destination(config: MirrorJobConfig) -> Path:
-    mount = PureWindowsPath(config.disk.mount_point)
     destination = PureWindowsPath(config.destination.path)
+    if config.disk is None:
+        marker_parent = PureWindowsPath(config.destination.marker_file).parent
+        destination_parts = tuple(part.casefold() for part in destination.parts)
+        marker_parts = tuple(part.casefold() for part in marker_parent.parts)
+        if destination_parts[: len(marker_parts)] != marker_parts:
+            raise MirrorRuntimeError("mirror destination must be below its verified marker")
+        return Path(destination)
+    mount = PureWindowsPath(config.disk.mount_point)
     mount_parts = tuple(part.casefold() for part in mount.parts)
     destination_parts = tuple(part.casefold() for part in destination.parts)
     if (
@@ -103,16 +107,3 @@ def _validated_destination(config: MirrorJobConfig) -> Path:
     ):
         raise MirrorRuntimeError("mirror destination must be inside the verified backup mount")
     return Path(destination)
-
-
-def _require_distinct_source_disk(config: MirrorJobConfig) -> None:
-    source = SourceVolumeResolver().resolve(config.source.path)
-    matching = [
-        candidate
-        for candidate in WindowsStorageInventory().enumerate()
-        if candidate.volume_guid.strip("{}").casefold() == str(source.volume_guid).casefold()
-    ]
-    if len(matching) != 1:
-        raise MirrorRuntimeError("source physical disk identity could not be established")
-    if matching[0].physical_serial.casefold() == config.disk.physical_serial.casefold():
-        raise MirrorRuntimeError("source and mirror destination cannot use the same physical disk")

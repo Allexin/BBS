@@ -68,6 +68,8 @@ def restart_and_verify(
         raise RestartError(
             f"configuration validation exited with {validation.returncode}: {diagnostic}"
         )
+    if validation.stdout.strip():
+        print(validation.stdout.strip(), flush=True)
     print("Configuration validation passed; service has not been changed yet.", flush=True)
 
     previous = _read_json(public / "health.json")

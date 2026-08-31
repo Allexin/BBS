@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 import yaml
@@ -14,6 +14,7 @@ from backup_system.common.config import (
     ExecutorJobConfig,
     MaintenanceJobConfig,
     ManagerConfig,
+    MirrorJobConfig,
     SmartConfig,
     SmartTestJobConfig,
     SnapshotJobConfig,
@@ -120,3 +121,28 @@ def validate_config_tree(manager_path: Path) -> tuple[ManagerConfig, SmartConfig
             ):
                 raise ConfigLoadError("snapshot jobs must own distinct repositories")
     return manager, smart
+
+
+def config_validation_warnings(config_dir: Path, manager: ManagerConfig) -> tuple[str, ...]:
+    messages = job_protection_info(config_dir, manager).values()
+    return tuple(f"WARNING: {message}" for message in messages)
+
+
+def job_protection_info(config_dir: Path, manager: ManagerConfig) -> dict[str, str]:
+    info: dict[str, str] = {}
+    for registered in manager.jobs:
+        config = load_job_config(job_config_path(config_dir, registered.id))
+        if isinstance(config, SnapshotJobConfig):
+            destination = config.repository.path
+        elif isinstance(config, MirrorJobConfig):
+            destination = config.destination.path
+        else:
+            continue
+        if PureWindowsPath(config.source.path).drive.casefold() == PureWindowsPath(
+            destination
+        ).drive.casefold():
+            info[config.id] = (
+                f"job {config.id!r} stores its backup on the source volume; "
+                "it protects against file loss but not physical disk failure"
+            )
+    return info

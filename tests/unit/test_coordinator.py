@@ -1,5 +1,7 @@
+import json
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from uuid import UUID
 
 import pytest
@@ -128,6 +130,24 @@ def test_run_orders_lock_identity_mount_smart_action_and_offline() -> None:
     assert result.value == "done"
     assert result.disk_offline_confirmed
     assert result.smart == sink[0]
+
+
+def test_always_online_run_verifies_marker_without_disk_lifecycle(tmp_path: Path) -> None:
+    calls: list[str] = []
+    marker_id = UUID(int=2)
+    marker = tmp_path / "marker.json"
+    marker.write_text(json.dumps({"marker_uuid": str(marker_id)}), encoding="utf-8")
+
+    result = _coordinator(calls, []).run_always_online(
+        marker=MarkerExpectation(str(marker), marker_id),
+        volume=VolumeObservation("", "B:\\", True),
+        smart_config=_smart_config(),
+        action=lambda volume: calls.append("action") or volume.mount_point,
+    )
+
+    assert calls == ["lock", "smart", "action", "unlock"]
+    assert result.value == "B:\\"
+    assert result.disk_offline_confirmed
 
 
 def test_recover_holds_lock_across_vss_cleanup_and_offline() -> None:

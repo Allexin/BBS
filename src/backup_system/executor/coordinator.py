@@ -14,6 +14,7 @@ from backup_system.executor.lifecycle import (
     ExecutorDiskLifecycle,
     LifecycleSuccess,
     MarkerExpectation,
+    verify_marker,
 )
 from backup_system.executor.smart_preflight import SmartPreflightObservation
 
@@ -77,6 +78,25 @@ class ExecutorWindowsCoordinator:
             disk_offline_confirmed=lifecycle_result.disk_offline_confirmed,
         )
 
+    def run_always_online(
+        self,
+        *,
+        marker: MarkerExpectation,
+        volume: VolumeObservation,
+        smart_config: SmartConfig,
+        action: Callable[[VolumeObservation], T],
+    ) -> ExecutorWindowsResult:
+        self._cancellation.raise_if_requested()
+        with self._lock_factory():
+            self._cancellation.raise_if_requested()
+            verify_marker(marker)
+            observations = tuple(self._smart.collect(smart_config))
+            self._smart_sink(observations)
+            self._cancellation.raise_if_requested()
+            value = action(volume)
+            self._cancellation.raise_if_requested()
+        return ExecutorWindowsResult(value, observations, True)
+
     def recover(
         self,
         *,
@@ -88,3 +108,7 @@ class ExecutorWindowsCoordinator:
                 disk,
                 pre_offline_cleanup=owned_vss_cleanup,
             )
+
+    def recover_always_online(self, *, owned_vss_cleanup: Callable[[], None]) -> None:
+        with self._lock_factory():
+            owned_vss_cleanup()

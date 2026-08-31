@@ -6,6 +6,7 @@ import pytest
 from backup_system.common.config import MaintenanceJobConfig
 from backup_system.common.config_io import (
     ConfigLoadError,
+    config_validation_warnings,
     load_manager_config,
     validate_config_tree,
     validate_job_with_owner,
@@ -119,6 +120,22 @@ def test_config_tree_validates_maintenance_owner(tmp_path: Path) -> None:
     assert len(manager.jobs) == 2
     assert smart.disks == ()
     assert isinstance(validate_job_with_owner(tmp_path, "data-maintenance"), MaintenanceJobConfig)
+
+
+def test_same_volume_backup_is_valid_with_warning(tmp_path: Path) -> None:
+    manager_path = _write_valid_tree(tmp_path)
+    job_path = tmp_path / "jobs" / "data.yaml"
+    contents = job_path.read_text(encoding="utf-8")
+    job_path.write_text(
+        contents.replace("source: {path: 'F:\\'}", "source: {path: 'C:\\Data'}"),
+        encoding="utf-8",
+    )
+    manager, _ = validate_config_tree(manager_path)
+
+    warnings = config_validation_warnings(tmp_path, manager)
+
+    assert len(warnings) == 1
+    assert "not physical disk failure" in warnings[0]
 
 
 def test_maintenance_mismatch_is_rejected(tmp_path: Path) -> None:

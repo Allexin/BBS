@@ -69,6 +69,7 @@ class ManagerApplication:
         executor_factory: ExecutorFactory = _default_executor_factory,
         job_kinds: dict[str, Literal["snapshot", "mirror", "maintenance", "smart-test"]]
         | None = None,
+        job_protection_info: dict[str, str] | None = None,
         notification_dispatcher: AsyncNotificationDispatcher | None = None,
         smart_config: SmartConfig | None = None,
     ) -> None:
@@ -109,6 +110,7 @@ class ManagerApplication:
         self._projection_builder = ProjectionBuilder(
             connection,
             job_kinds=selected_job_kinds,
+            job_protection_info=job_protection_info,
             job_deadlines={job.id: job.schedule.deadline for job in config.jobs},
             disk_health_policies={
                 item.disk_id: (item.affects_system_health, item.reason)

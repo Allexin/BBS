@@ -10,6 +10,7 @@ from backup_system.common.config import (
     SmartConfig,
     SmartTestJobConfig,
     SnapshotJobConfig,
+    SnapshotRetentionConfig,
 )
 
 
@@ -58,6 +59,33 @@ def test_snapshot_job_is_selected_by_discriminator() -> None:
         }
     )
     assert isinstance(config, SnapshotJobConfig)
+
+
+def test_snapshot_keep_all_retention_has_no_policy_tiers() -> None:
+    config = SnapshotRetentionConfig.model_validate({"mode": "keep-all"})
+    assert config.mode == "keep-all"
+    assert config.keep_last == 0
+    with pytest.raises(ValidationError):
+        SnapshotRetentionConfig.model_validate({"mode": "keep-all", "keep_last": 1})
+
+
+def test_snapshot_disk_lifecycle_is_optional() -> None:
+    config = EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(
+        {
+            "schema_version": 1,
+            "id": "local-copy",
+            "kind": "snapshot",
+            "display_name": "Local copy",
+            "source": {"path": "F:\\source"},
+            "excludes": [],
+            "repository": _repository(),
+            "backup": {"host": "host", "tags": [], "read_error_result": "failed"},
+            "retention": {"mode": "keep-all"},
+            "verification": {"data_subset_parts": 1, "restore_test_paths": []},
+        }
+    )
+    assert isinstance(config, SnapshotJobConfig)
+    assert config.disk is None
 
 
 @pytest.mark.parametrize(

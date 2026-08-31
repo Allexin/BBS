@@ -16,8 +16,6 @@ from backup_system.executor.runtime import build_windows_job
 from backup_system.executor.smart_preflight import SmartPreflightObservation
 from backup_system.executor.snapshot_adapter import SnapshotAdapter
 from backup_system.executor.snapshot_state import SnapshotStateStore
-from backup_system.executor.source_volume import SourceVolumeResolver
-from backup_system.executor.storage_inventory import WindowsStorageInventory
 
 
 class SnapshotRuntimeError(RuntimeError):
@@ -86,7 +84,6 @@ def run_snapshot_operation(
         )
     if operation != "run":
         raise SnapshotRuntimeError(f"unsupported snapshot operation: {operation}")
-    _require_distinct_source_disk(config)
     return windows_job.run(
         config=config,
         smart_config=smart_config,
@@ -96,26 +93,20 @@ def run_snapshot_operation(
 
 
 def _validated_repository(config: SnapshotJobConfig | MaintenanceJobConfig) -> Path:
-    mount = PureWindowsPath(config.disk.mount_point)
     repository = PureWindowsPath(config.repository.path)
+    if config.disk is None:
+        marker_parent = PureWindowsPath(config.repository.marker_file).parent
+        repository_parts = tuple(part.casefold() for part in repository.parts)
+        marker_parts = tuple(part.casefold() for part in marker_parent.parts)
+        if repository_parts[: len(marker_parts)] != marker_parts:
+            raise SnapshotRuntimeError("snapshot repository must be below its verified marker")
+        return Path(repository)
+    mount = PureWindowsPath(config.disk.mount_point)
     mount_parts = tuple(part.casefold() for part in mount.parts)
     repository_parts = tuple(part.casefold() for part in repository.parts)
     if repository == mount or repository_parts[: len(mount_parts)] != mount_parts:
         raise SnapshotRuntimeError("snapshot repository must be inside the verified backup mount")
     return Path(repository)
-
-
-def _require_distinct_source_disk(config: SnapshotJobConfig) -> None:
-    source = SourceVolumeResolver().resolve(config.source.path)
-    matching = [
-        candidate
-        for candidate in WindowsStorageInventory().enumerate()
-        if candidate.volume_guid.strip("{}").casefold() == str(source.volume_guid).casefold()
-    ]
-    if len(matching) != 1:
-        raise SnapshotRuntimeError("source physical disk identity could not be established")
-    if matching[0].physical_serial.casefold() == config.disk.physical_serial.casefold():
-        raise SnapshotRuntimeError("source and snapshot destination cannot use the same disk")
 
 
 def _emit_progress(

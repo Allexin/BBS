@@ -141,6 +141,14 @@ embedded inside another component are invalid. Use backslashes in job YAML; BBS
 translates the pattern for the selected adapter. Snapshot and mirror use the same
 matching contract.
 
+### 3.3 Repository disk lifecycle
+
+Omit `disk` for a repository on a permanently connected local disk. BBS still verifies
+the configured marker and runs SMART preflight, but never changes disk online/offline
+state or mount points. Add `disk` only for a separately identified carrier that BBS must
+bring online for the operation and return offline afterward. A maintenance job must use
+the same repository and the same lifecycle choice as its snapshot owner.
+
 ### 3.3 Excluding an accepted-risk disk from system health
 
 Use this only when a degraded disk has a deliberately non-critical role. Copy the

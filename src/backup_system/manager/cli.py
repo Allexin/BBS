@@ -6,7 +6,11 @@ import sys
 from collections.abc import Sequence
 from pathlib import Path
 
-from backup_system.common.config_io import ConfigLoadError, validate_config_tree
+from backup_system.common.config_io import (
+    ConfigLoadError,
+    config_validation_warnings,
+    validate_config_tree,
+)
 from backup_system.common.exit_codes import ManagerExitCode
 from backup_system.manager.bootstrap import write_bootstrap_failure
 from backup_system.manager.service import run_service
@@ -38,6 +42,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return ManagerExitCode.BOOTSTRAP_ERROR
         return ManagerExitCode.CONFIG_INVALID
     if arguments.validate_only:
+        for warning in config_validation_warnings(config_path.parent, manager_config):
+            print(warning)
         return ManagerExitCode.SUCCESS
     try:
         asyncio.run(run_service(config_path, manager_config, smart_config))

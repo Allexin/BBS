@@ -27,17 +27,17 @@ class ExecutorRecovery:
         self._intents = intents
         self._vss_cleaner = vss_cleaner
 
-    def run(self, *, job_id: str, disk: DiskConfig) -> RecoveryResult:
+    def run(self, *, job_id: str, disk: DiskConfig | None) -> RecoveryResult:
         cleaned = False
 
         def cleanup() -> None:
             nonlocal cleaned
             cleaned = self._intents.recover(job_id, self._vss_cleaner)
 
-        lifecycle = self._coordinator.recover(
-            disk=disk,
-            owned_vss_cleanup=cleanup,
-        )
+        if disk is None:
+            self._coordinator.recover_always_online(owned_vss_cleanup=cleanup)
+            return RecoveryResult(vss_intent_cleaned=cleaned, disk_offline_confirmed=True)
+        lifecycle = self._coordinator.recover(disk=disk, owned_vss_cleanup=cleanup)
         return RecoveryResult(
             vss_intent_cleaned=cleaned,
             disk_offline_confirmed=lifecycle.disk_offline_confirmed,

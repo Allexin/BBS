@@ -44,6 +44,7 @@ class PublicJob(PublicModel):
     kind: Literal["snapshot", "mirror", "maintenance", "smart-test", "unknown"]
     health: Literal["healthy", "warning", "critical", "unknown"]
     health_reason: str
+    protection_info: str | None = None
     next_fire_at: AwareDatetime | None = None
     next_operation: str | None = None
     deadline: str | None = None

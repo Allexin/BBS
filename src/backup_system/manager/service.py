@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 
 from backup_system.common.config import ManagerConfig, SmartConfig
-from backup_system.common.config_io import validate_job_with_owner
+from backup_system.common.config_io import job_protection_info, validate_job_with_owner
 from backup_system.common.time import utc_now
 from backup_system.manager.application import ManagerApplication
 from backup_system.manager.database import open_manager_database
@@ -90,6 +90,7 @@ async def run_service(
                 job.id: validate_job_with_owner(layout.config, job.id).kind
                 for job in config.jobs
             },
+            job_protection_info=job_protection_info(layout.config, config),
             notification_dispatcher=notification_dispatcher,
             smart_config=smart_config,
         )

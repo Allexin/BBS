@@ -212,11 +212,32 @@ class SnapshotBackupConfig(StrictModel):
 
 
 class SnapshotRetentionConfig(StrictModel):
+    mode: Literal["policy", "keep-all"] = "policy"
     keep_last: int = Field(ge=0)
     keep_daily: int = Field(ge=0)
     keep_weekly: int = Field(ge=0)
     keep_monthly: int = Field(ge=0)
     keep_yearly: int = Field(ge=0)
+
+    @model_validator(mode="before")
+    @classmethod
+    def validate_mode(cls, value: object) -> object:
+        if not isinstance(value, dict):
+            return value
+        selected = value.get("mode", "policy")
+        tiers = ("keep_last", "keep_daily", "keep_weekly", "keep_monthly", "keep_yearly")
+        if selected == "keep-all":
+            if any(name in value for name in tiers):
+                raise ValueError("keep-all retention cannot contain keep tiers")
+            return {**value, **dict.fromkeys(tiers, 0)}
+        defaults = {
+            "keep_last": 1,
+            "keep_daily": 0,
+            "keep_weekly": 4,
+            "keep_monthly": 6,
+            "keep_yearly": 0,
+        }
+        return {**defaults, **value}
 
 
 class VerificationConfig(StrictModel):
@@ -251,7 +272,7 @@ class JobBase(StrictModel):
 class DataJobBase(JobBase):
     source: SourceConfig
     excludes: tuple[str, ...]
-    disk: DiskConfig
+    disk: DiskConfig | None = None
 
     @field_validator("excludes")
     @classmethod
@@ -285,7 +306,7 @@ class MaintenanceJobConfig(JobBase):
     kind: Literal["maintenance"]
     repository_owner_job_id: str
     repository: RepositoryConfig
-    disk: DiskConfig
+    disk: DiskConfig | None = None
 
     _owner_id = field_validator("repository_owner_job_id")(_validate_job_id)
 

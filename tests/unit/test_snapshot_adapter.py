@@ -3,7 +3,11 @@ from uuid import uuid4
 
 import pytest
 
-from backup_system.common.config import EXECUTOR_JOB_CONFIG_ADAPTER, SnapshotJobConfig
+from backup_system.common.config import (
+    EXECUTOR_JOB_CONFIG_ADAPTER,
+    SnapshotJobConfig,
+    SnapshotRetentionConfig,
+)
 from backup_system.executor.restic_process import ResticProcessError, ResticResult
 from backup_system.executor.snapshot_adapter import (
     SnapshotAdapter,
@@ -120,6 +124,23 @@ def test_backup_translates_recursive_exclude_for_restic(tmp_path: Path) -> None:
         "Audiolibraries", "Rutracker", "audio", "**", "*.ogg"
     ).as_posix()
     assert runner.exclude_files == [expected + "\n"]
+
+
+def test_keep_all_backup_skips_forget_and_observes_all_snapshots(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        [
+            ResticResult(0, ({"message_type": "summary", "snapshot_id": "new", "data_added": 1},)),
+            ResticResult(0, ({"id": "old"}, {"id": "new"})),
+        ]
+    )
+    config = _config().model_copy(
+        update={"retention": SnapshotRetentionConfig.model_validate({"mode": "keep-all"})}
+    )
+
+    result = _adapter(tmp_path, runner).backup(config, source_root=tmp_path / "shadow")
+
+    assert [command[3] for command in runner.commands] == ["backup", "snapshots"]
+    assert result.snapshots == ("old", "new")
 
 
 def test_failed_backup_never_runs_retention(tmp_path: Path) -> None:

@@ -9,6 +9,7 @@ from typing import Protocol, TypeVar
 from uuid import UUID
 
 from backup_system.common.config import (
+    DiskConfig,
     MaintenanceJobConfig,
     MirrorJobConfig,
     SmartConfig,
@@ -65,12 +66,7 @@ class ExecutorWindowsJob:
                 action=lambda source_root: adapter(WindowsDataContext(source_root, volume)),
             )
 
-        return self._coordinator.run(
-            disk=config.disk,
-            marker=marker_expectation(config),
-            smart_config=smart_config,
-            action=with_backup_volume,
-        )
+        return self._run_destination(config, smart_config, with_backup_volume)
 
     def run_destination(
         self,
@@ -79,11 +75,10 @@ class ExecutorWindowsJob:
         smart_config: SmartConfig,
         adapter: Callable[[WindowsDataContext], T],
     ) -> ExecutorWindowsResult:
-        return self._coordinator.run(
-            disk=config.disk,
-            marker=marker_expectation(config),
-            smart_config=smart_config,
-            action=lambda volume: adapter(
+        return self._run_destination(
+            config,
+            smart_config,
+            lambda volume: adapter(
                 WindowsDataContext(PureWindowsPath(config.source.path), volume)
             ),
         )
@@ -95,14 +90,50 @@ class ExecutorWindowsJob:
         smart_config: SmartConfig,
         adapter: Callable[[VolumeObservation], T],
     ) -> ExecutorWindowsResult:
-        return self._coordinator.run(
-            disk=config.disk,
-            marker=MarkerExpectation(
+        marker = MarkerExpectation(
                 file=config.repository.marker_file,
                 marker_uuid=config.repository.marker_uuid,
+            )
+        return self._coordinate(
+            config.disk, marker, config.repository.path, smart_config, adapter
+        )
+
+    def _run_destination(
+        self,
+        config: DataJobConfig,
+        smart_config: SmartConfig,
+        action: Callable[[VolumeObservation], T],
+    ) -> ExecutorWindowsResult:
+        path = (
+            config.repository.path
+            if isinstance(config, SnapshotJobConfig)
+            else config.destination.path
+        )
+        return self._coordinate(
+            config.disk, marker_expectation(config), path, smart_config, action
+        )
+
+    def _coordinate(
+        self,
+        disk: DiskConfig | None,
+        marker: MarkerExpectation,
+        path: str,
+        smart_config: SmartConfig,
+        action: Callable[[VolumeObservation], T],
+    ) -> ExecutorWindowsResult:
+        if disk is not None:
+            return self._coordinator.run(
+                disk=disk, marker=marker, smart_config=smart_config, action=action
+            )
+        return self._coordinator.run_always_online(
+            marker=marker,
+            volume=VolumeObservation(
+                volume_guid="",
+                mount_point=PureWindowsPath(path).anchor,
+                available=True,
             ),
             smart_config=smart_config,
-            action=adapter,
+            action=action,
         )
 
 
