@@ -16,6 +16,7 @@ from backup_system.common.config import (
     SnapshotJobConfig,
     SnapshotRetentionConfig,
 )
+from backup_system.common.excludes import restic_exclude_pattern
 from backup_system.executor.restic_auth import restic_auth_arguments
 from backup_system.executor.restic_process import ResticProcessError, ResticResult
 from backup_system.executor.snapshot_state import LoadedSnapshotState, SnapshotStateStore
@@ -89,7 +90,7 @@ class SnapshotAdapter:
         self._runner.verify_version()
         self._stage_sink("backing_up")
         with self._auth(config) as base, _exclude_file(
-            config.excludes, self._secret_directory
+            config.excludes, source_root, self._secret_directory
         ) as exclude_file:
             result = self._run(
                 [
@@ -100,7 +101,7 @@ class SnapshotAdapter:
                     config.backup.host,
                     "--tag",
                     f"job:{config.id}",
-                    "--exclude-file",
+                    "--iexclude-file",
                     str(exclude_file),
                     str(source_root),
                 ],
@@ -247,11 +248,14 @@ def _backup_summary(events: Sequence[Mapping[str, Any]]) -> tuple[str, int]:
 
 
 @contextmanager
-def _exclude_file(excludes: Sequence[str], directory: Path) -> Iterator[Path]:
+def _exclude_file(
+    excludes: Sequence[str], source_root: Path, directory: Path
+) -> Iterator[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"restic-excludes-{os.getpid()}-{uuid4()}.txt"
     try:
-        path.write_text("\n".join(excludes) + "\n", encoding="utf-8")
+        patterns = (restic_exclude_pattern(value, source_root) for value in excludes)
+        path.write_text("\n".join(patterns) + "\n", encoding="utf-8")
         yield path
     finally:
         path.unlink(missing_ok=True)

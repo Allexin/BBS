@@ -120,7 +120,28 @@ validated job contract. Other operations must not contain `mode`.
 An optional `deadline: '08:00'` is a wall-clock completion target in the job timezone;
 it is not a forced termination time.
 
-### 3.2 Excluding an accepted-risk disk from system health
+### 3.2 Source excludes
+
+Snapshot and mirror job files accept source-root-relative patterns in `excludes`:
+
+```yaml
+source:
+  path: 'M:\torrents\LibRusEc'
+excludes:
+  - 'Audiolibraries\Rutracker\audio\**\*.ogg'
+```
+
+Exact paths exclude that object and all descendants. `*` and `?` match only inside one
+path component; `**` as a complete component matches zero or more directory levels.
+Matching is case-insensitive. Patterns are always anchored to the configured source
+root, so the example does not exclude an `audio` tree elsewhere.
+
+Absolute paths, leading separators, `..`, negation, character classes, and `**`
+embedded inside another component are invalid. Use backslashes in job YAML; BBS
+translates the pattern for the selected adapter. Snapshot and mirror use the same
+matching contract.
+
+### 3.3 Excluding an accepted-risk disk from system health
 
 Use this only when a degraded disk has a deliberately non-critical role. Copy the
 stable public ID shown on its Web UI card:

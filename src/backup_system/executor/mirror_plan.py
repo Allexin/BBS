@@ -11,6 +11,8 @@ from enum import StrEnum
 from pathlib import Path, PureWindowsPath
 from typing import Protocol
 
+from backup_system.common.excludes import exclude_matches
+
 
 class MirrorPlanError(RuntimeError):
     pass
@@ -123,7 +125,6 @@ def scan_tree(
     keys = path_keys or PortableWindowsPathKeys()
     if not root.is_dir():
         raise MirrorPlanError(f"scan root is unavailable: {root}")
-    excluded = tuple(_parts(value) for value in excludes)
     files: dict[str, ScannedFile] = {}
     directories: list[str] = []
     total = 0
@@ -142,7 +143,7 @@ def scan_tree(
                 reserved_root is not None
                 and len(parts) == 1
                 and parts[0] == reserved_root.casefold()
-            ) or any(parts[: len(prefix)] == prefix for prefix in excluded):
+            ) or any(exclude_matches(pattern, relative) for pattern in excludes):
                 continue
             try:
                 info = entry.stat(follow_symlinks=False)

@@ -159,6 +159,28 @@ def test_excludes_reject_case_insensitive_collisions() -> None:
         EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(value)
 
 
+def test_excludes_accept_wildcards_but_reject_partial_double_wildcard() -> None:
+    value = {
+        "schema_version": 1,
+        "id": "data-mirror",
+        "kind": "mirror",
+        "display_name": "Data mirror",
+        "source": {"path": "F:\\"},
+        "excludes": [r"Audiolibraries\Rutracker\audio\**\*.ogg"],
+        "destination": {
+            "path": r"C:\Backup\mirror",
+            "marker_file": r"C:\Backup\mirror\.backup-system\marker.json",
+            "marker_uuid": str(uuid4()),
+        },
+        "disk": _disk(),
+        "verification": {"restore_test_paths": []},
+    }
+    assert isinstance(EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(value), MirrorJobConfig)
+    value["excludes"] = [r"audio\cache**\*.ogg"]
+    with pytest.raises(ValidationError):
+        EXECUTOR_JOB_CONFIG_ADAPTER.validate_python(value)
+
+
 def test_manager_config_rejects_invalid_cycle_mode() -> None:
     with pytest.raises(ValidationError):
         ManagerConfig.model_validate(

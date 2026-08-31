@@ -11,6 +11,8 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from croniter import croniter
 from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
+from backup_system.common.excludes import validate_exclude_pattern
+
 JOB_ID_PATTERN = re.compile(r"^[a-z][a-z0-9-]{0,62}$")
 
 
@@ -256,11 +258,8 @@ class DataJobBase(JobBase):
     def validate_excludes(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         keys: set[str] = set()
         for value in values:
+            validate_exclude_pattern(value)
             path = PureWindowsPath(value)
-            if not value or path.is_absolute() or path.drive or ".." in path.parts:
-                raise ValueError("excludes must be non-empty relative Windows paths")
-            if value.startswith(("\\", "/")) or any(char in value for char in "*?"):
-                raise ValueError("excludes cannot contain roots or wildcards")
             key = str(path).casefold()
             if key in keys:
                 raise ValueError("excludes must be case-insensitively unique")

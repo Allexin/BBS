@@ -75,6 +75,23 @@ def test_scan_does_not_follow_reparse_or_symlink(tmp_path: Path) -> None:
     assert result.skipped_reparse_points == 1
 
 
+def test_scan_applies_recursive_glob_relative_to_source_root(tmp_path: Path) -> None:
+    root = tmp_path / "source"
+    _write(root / "Audiolibraries" / "Rutracker" / "audio" / "one.ogg", b"cache")
+    _write(root / "Audiolibraries" / "Rutracker" / "audio" / "a" / "two.OGG", b"cache")
+    _write(root / "Audiolibraries" / "Rutracker" / "audio" / "a" / "keep.mp3", b"keep")
+    _write(root / "other" / "audio" / "a" / "keep.ogg", b"keep")
+
+    result = scan_tree(
+        root, excludes=(r"Audiolibraries\Rutracker\audio\**\*.ogg",)
+    )
+
+    assert {item.relative_path for item in result.files.values()} == {
+        r"Audiolibraries\Rutracker\audio\a\keep.mp3",
+        r"other\audio\a\keep.ogg",
+    }
+
+
 def test_capacity_rejects_before_mutation_and_reports_growth_warning() -> None:
     plan = build_plan(_scan_from_sizes({"new.bin": 120}), _scan_from_sizes({"old.bin": 100}))
 

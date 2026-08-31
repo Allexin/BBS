@@ -17,6 +17,7 @@ class FakeRunner:
         self.results = results
         self.commands: list[tuple[str, ...]] = []
         self.version_checks = 0
+        self.exclude_files: list[str] = []
 
     def verify_version(self) -> tuple[int, int, int]:
         self.version_checks += 1
@@ -24,7 +25,11 @@ class FakeRunner:
 
     def run(self, arguments: object, *, expect_json: bool = True) -> ResticResult:
         del expect_json
-        self.commands.append(tuple(arguments))  # type: ignore[arg-type]
+        command = tuple(arguments)  # type: ignore[arg-type]
+        self.commands.append(command)
+        if "--iexclude-file" in command:
+            path = Path(command[command.index("--iexclude-file") + 1])
+            self.exclude_files.append(path.read_text(encoding="utf-8"))
         result = self.results.pop(0)
         if isinstance(result, BaseException):
             raise result
@@ -91,6 +96,30 @@ def test_backup_runs_snapshot_then_retention_then_observation(tmp_path: Path) ->
     assert result.snapshots == ("abcdef",)
     assert [command[3] for command in runner.commands] == ["backup", "forget", "snapshots"]
     assert "--keep-weekly" in runner.commands[1]
+    source = (tmp_path / "shadow").resolve()
+    expected = source.joinpath("Cache").as_posix()
+    assert runner.exclude_files == [expected + "\n"]
+
+
+def test_backup_translates_recursive_exclude_for_restic(tmp_path: Path) -> None:
+    runner = FakeRunner(
+        [
+            ResticResult(0, ({"message_type": "summary", "snapshot_id": "abc", "data_added": 0},)),
+            ResticResult(0, ()),
+            ResticResult(0, ({"id": "abcdef", "short_id": "abcdef"},)),
+        ]
+    )
+    config = _config().model_copy(
+        update={"excludes": (r"Audiolibraries\Rutracker\audio\**\*.ogg",)}
+    )
+
+    _adapter(tmp_path, runner).backup(config, source_root=tmp_path / "shadow")
+
+    source = (tmp_path / "shadow").resolve()
+    expected = source.joinpath(
+        "Audiolibraries", "Rutracker", "audio", "**", "*.ogg"
+    ).as_posix()
+    assert runner.exclude_files == [expected + "\n"]
 
 
 def test_failed_backup_never_runs_retention(tmp_path: Path) -> None:

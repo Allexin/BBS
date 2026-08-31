@@ -1664,11 +1664,20 @@ disk:
 
 Один `job_id` соответствует одному файлу `jobs/<job-id>.yaml`; дополнительные пути и поиск по glob запрещены. Job ID соответствует регулярному выражению `^[a-z][a-z0-9-]{0,62}$`.
 
-`excludes` v1 — список точных относительных путей внутри единственного source root.
-Каждая запись исключает указанный объект и всех его descendants. Запрещены:
+`excludes` v1 — список относительных path patterns внутри единственного source root.
+Точный путь исключает указанный объект и всех его descendants. Pattern matching
+регистронезависим по Windows rules и одинаков для snapshot и mirror:
+
+- `*` и `?` сопоставляются только внутри одного path component;
+- `**` разрешён только как полный component и сопоставляется с нулём или большим
+  числом components;
+- pattern всегда привязан к source root и не применяется к совпавшему basename в
+  другой ветке.
+
+Запрещены:
 
 - абсолютные пути, drive letters, leading separator и `..`;
-- glob/wildcard (`*`, `?`, `**`), regex и negation;
+- character classes (`[` и `]`), regex, negation и частичное использование `**`;
 - правила «по basename в любом месте дерева»;
 - дубли и case-insensitive path collisions.
 
