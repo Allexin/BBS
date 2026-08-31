@@ -135,7 +135,7 @@ class ResticProcess:
                     self._terminate(process)
                     raise ResticProcessError(
                         detected,
-                        f"restic failed: {detected}",
+                        f"restic failed: {detected}; {_fault_diagnostic(line, parsed)}",
                         exit_code=process.returncode,
                     )
                 if expect_json and stream == "stdout" and line and not parsed:
@@ -185,6 +185,15 @@ def _parse_events(line: str) -> tuple[Mapping[str, Any], ...]:
     if isinstance(value, list) and all(isinstance(item, dict) for item in value):
         return tuple(value)
     return ()
+
+
+def _fault_diagnostic(line: str, events: tuple[Mapping[str, Any], ...]) -> str:
+    value = (
+        json.dumps(events[0], ensure_ascii=True, separators=(",", ":"))
+        if events
+        else line
+    )
+    return value[:4000]
 
 
 def _classify_fault(

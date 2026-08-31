@@ -8,6 +8,7 @@ from backup_system.executor.restic_process import (
     ResticProcess,
     ResticProcessError,
     _classify_fault,
+    _fault_diagnostic,
 )
 
 
@@ -33,6 +34,14 @@ def test_structured_archival_error_is_source_failure() -> None:
         _classify_fault("stderr", "ignored", {"message_type": "error", "during": "archival"})
         == "source_read_error"
     )
+
+
+def test_private_fault_diagnostic_preserves_structured_restic_reason() -> None:
+    diagnostic = _fault_diagnostic(
+        "ignored",
+        ({"message_type": "error", "during": "archival", "error": "access denied"},),
+    )
+    assert '"error":"access denied"' in diagnostic
 
 
 def test_pinned_repository_diagnostics_are_narrow() -> None:
