@@ -185,6 +185,11 @@ executor thread уже инициализирован другим COM consumer 
 случае BBS использует существующий apartment и не вызывает парный `CoUninitialize`;
 остальные failed HRESULT остаются ошибкой запуска VSS.
 
+Durable VSS intents и состояние snapshot verification никогда не разделяют namespace:
+intents хранятся в `data/state/executor/vss-intents`, а cursors/gates snapshot jobs — в
+`data/state/executor/snapshot-jobs`. Совпадение job ID не может приводить к перезаписи
+доказательства владения VSS snapshot set.
+
 Manager не импортирует модули executor и не разбирает операционный конфиг. Его конфигурация содержит только:
 
 - `job_id`;

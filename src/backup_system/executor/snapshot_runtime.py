@@ -47,7 +47,7 @@ def run_snapshot_operation(
             event_sink=lambda event: _emit_progress(event, event_sink),
         ),
         states=SnapshotStateStore(
-            state_root,
+            state_root / "snapshot-jobs",
             runtime_root / "data" / "diagnostics" / "snapshot-state",
         ),
         secret_directory=state_root / "secrets",

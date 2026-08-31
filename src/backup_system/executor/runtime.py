@@ -43,7 +43,9 @@ def build_windows_job(
         coordinator=coordinator,
         source_snapshots=ExecutorSourceSnapshot(
             resolver=SourceVolumeResolver(),
-            snapshots=OwnedVssSnapshotManager(vss, VssIntentStore(executor_state)),
+            snapshots=OwnedVssSnapshotManager(
+                vss, VssIntentStore(executor_state / "vss-intents")
+            ),
             cancellation_checkpoint=cancellation.raise_if_requested,
         ),
     )
@@ -64,7 +66,7 @@ def run_recovery(
     )
     return ExecutorRecovery(
         coordinator=coordinator,
-        intents=VssIntentStore(executor_state),
+        intents=VssIntentStore(executor_state / "vss-intents"),
         vss_cleaner=NativeVssBackend(cancellation_checkpoint=cancellation.raise_if_requested),
     ).run(job_id=config.id, disk=config.disk)
 
