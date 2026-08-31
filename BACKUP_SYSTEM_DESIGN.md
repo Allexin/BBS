@@ -180,6 +180,11 @@ thread; executor, в свою очередь, дожидается заверш�
 reader threads не являются daemon threads. Это исключает зависание или fatal shutdown
 Python из-за фонового чтения buffered stdin после уже завершённой операции.
 
+Native VSS requestor принимает `RPC_E_CHANGED_MODE` от `CoInitializeEx`, если текущий
+executor thread уже инициализирован другим COM consumer в ином apartment mode. В этом
+случае BBS использует существующий apartment и не вызывает парный `CoUninitialize`;
+остальные failed HRESULT остаются ошибкой запуска VSS.
+
 Manager не импортирует модули executor и не разбирает операционный конфиг. Его конфигурация содержит только:
 
 - `job_id`;

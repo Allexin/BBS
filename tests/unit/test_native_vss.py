@@ -6,10 +6,12 @@ from backup_system.executor.cancellation import CancellationRequested, Cancellat
 from backup_system.executor.native_vss import (
     HRESULT_OPERATION_CANCELLED,
     HRESULT_WAIT_TIMEOUT,
+    RPC_E_CHANGED_MODE,
     VSS_S_ASYNC_CANCELLED,
     VSS_S_ASYNC_FINISHED,
     VSS_S_ASYNC_PENDING,
     NativeVssBackend,
+    _com_uninitializer,
     _poll_async_status,
     _require_async_finished,
 )
@@ -63,6 +65,11 @@ def test_active_requestor_is_retained_across_start_complete_and_delete() -> None
         ("delete", SET_ID),
         "close",
     ]
+
+
+def test_existing_different_com_apartment_is_accepted_without_uninitialize() -> None:
+    signed_changed_mode = RPC_E_CHANGED_MODE - (1 << 32)
+    assert _com_uninitializer(signed_changed_mode, object()) is None
 
 
 def test_recovery_without_active_requestor_uses_fresh_session() -> None:

@@ -125,7 +125,9 @@ class CtypesVssFactory:
         if os.name != "nt":
             raise OSError("VSS is available only on Windows")
         self._vssapi = ctypes.WinDLL("vssapi", use_last_error=True)
-        self._ole32 = ctypes.OleDLL("ole32")
+        # WinDLL preserves the raw HRESULT. OleDLL raises before we can accept
+        # RPC_E_CHANGED_MODE from a thread initialized by another COM consumer.
+        self._ole32 = ctypes.WinDLL("ole32")
         self._ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, wintypes.DWORD]
         self._ole32.CoInitializeEx.restype = HRESULT
         self._ole32.CoUninitialize.argtypes = []
@@ -140,10 +142,9 @@ class CtypesVssFactory:
 
     def create(self) -> NativeVssSession:
         result = self._ole32.CoInitializeEx(None, 0)
-        unsigned_result = _unsigned(result)
-        if _failed(result) and unsigned_result != RPC_E_CHANGED_MODE:
-            _raise_hresult("CoInitializeEx", result)
-        uninitialize = self._ole32.CoUninitialize if unsigned_result in {0, 1} else None
+        uninitialize = _com_uninitializer(
+            result, self._ole32.CoUninitialize
+        )
         pointer = ctypes.c_void_p()
         try:
             _check("CreateVssBackupComponents", self._create(ctypes.byref(pointer)))
@@ -161,6 +162,13 @@ class CtypesVssFactory:
             uninitialize,
             self._cancellation_checkpoint,
         )
+
+
+def _com_uninitializer(result: int, uninitialize: Any) -> Any | None:
+    unsigned_result = _unsigned(result)
+    if _failed(result) and unsigned_result != RPC_E_CHANGED_MODE:
+        _raise_hresult("CoInitializeEx", result)
+    return uninitialize if unsigned_result in {0, 1} else None
 
 
 class CtypesVssSession:
