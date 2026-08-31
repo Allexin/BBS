@@ -128,7 +128,11 @@ def deploy(
         (staging / "backup-system.root").write_text("BBS Stable root\n", encoding="ascii")
         _run_checked(
             [
-                str(uv), "sync", "--frozen", "--no-editable", "--project",
+                str(uv),
+                "sync",
+                "--frozen",
+                "--no-editable",
+                "--project",
                 str(staging / "app"),
             ],
             env={**os.environ, "UV_PROJECT_ENVIRONMENT": str(staging / ".venv")},
@@ -136,8 +140,12 @@ def deploy(
         staged_python = staging / ".venv" / "Scripts" / "python.exe"
         _run_checked(
             [
-                str(staged_python), "-m", "backup_system.manager", "--config",
-                str(stable / "data" / "config" / "manager.yaml"), "--validate-only",
+                str(staged_python),
+                "-m",
+                "backup_system.manager",
+                "--config",
+                str(stable / "data" / "config" / "manager.yaml"),
+                "--validate-only",
             ]
         )
         for name in ("app", ".venv", "web"):
@@ -188,9 +196,7 @@ def _require_service_stopped(nssm: Path, service_name: str) -> None:
     )
 
 
-def _wait_for_status(
-    nssm: Path, service_name: str, expected: str, *, attempts: int | None
-) -> None:
+def _wait_for_status(nssm: Path, service_name: str, expected: str, *, attempts: int | None) -> None:
     count = 0
     last_status: str | None = None
     while True:
@@ -211,18 +217,14 @@ def _run_checked(
 ) -> subprocess.CompletedProcess[str]:
     result = _run(argv, env=env)
     if result.returncode != 0:
-        raise DeploymentError(
-            f"command failed ({result.returncode}): {result.stderr.strip()}"
-        )
+        raise DeploymentError(f"command failed ({result.returncode}): {result.stderr.strip()}")
     return result
 
 
 def _run(
     argv: Sequence[str], *, env: dict[str, str] | None = None
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        argv, check=False, capture_output=True, text=True, shell=False, env=env
-    )
+    return subprocess.run(argv, check=False, capture_output=True, text=True, shell=False, env=env)
 
 
 def _command_output(result: subprocess.CompletedProcess[str]) -> str:
@@ -243,9 +245,7 @@ def _run_elevated(arguments: Sequence[str]) -> int:
     kernel32.GetExitCodeProcess.argtypes = (wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD))
     kernel32.GetExitCodeProcess.restype = wintypes.BOOL
     kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
-    parameters = subprocess.list2cmdline(
-        ["-m", "backup_system.deployment.deploy", *arguments]
-    )
+    parameters = subprocess.list2cmdline(["-m", "backup_system.deployment.deploy", *arguments])
     info = _ShellExecuteInfo()
     info.cbSize = ctypes.sizeof(info)
     info.fMask = SEE_MASK_NOCLOSEPROCESS

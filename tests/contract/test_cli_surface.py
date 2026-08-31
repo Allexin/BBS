@@ -84,7 +84,8 @@ def test_queue_remove_reads_validated_structured_result(tmp_path) -> None:
     completed = tmp_path / "data" / "commands" / "completed"
     completed.mkdir(parents=True)
     (completed / f"{command_id}.result.json").write_text(
-        '{"schema_version":1,"command_id":"' + command_id
+        '{"schema_version":1,"command_id":"'
+        + command_id
         + '","disposition":"not_queued","operation_id":null}',
         encoding="utf-8",
     )

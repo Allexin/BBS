@@ -135,8 +135,7 @@ def validate_config_tree(manager_path: Path) -> tuple[ManagerConfig, SmartConfig
             ):
                 raise ConfigLoadError("snapshot jobs must own distinct repositories")
             same_marker_file = (
-                left.repository.marker_file.casefold()
-                == right.repository.marker_file.casefold()
+                left.repository.marker_file.casefold() == right.repository.marker_file.casefold()
             )
             same_marker_uuid = left.repository.marker_uuid == right.repository.marker_uuid
             if same_marker_file != same_marker_uuid:
@@ -161,9 +160,10 @@ def job_protection_info(config_dir: Path, manager: ManagerConfig) -> dict[str, s
             destination = config.destination.path
         else:
             continue
-        if PureWindowsPath(config.source.path).drive.casefold() == PureWindowsPath(
-            destination
-        ).drive.casefold():
+        if (
+            PureWindowsPath(config.source.path).drive.casefold()
+            == PureWindowsPath(destination).drive.casefold()
+        ):
             info[config.id] = (
                 f"job {config.id!r} stores its backup on the source volume; "
                 "it protects against file loss but not physical disk failure"

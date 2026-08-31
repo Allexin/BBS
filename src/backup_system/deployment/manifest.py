@@ -27,9 +27,7 @@ class DeploymentManifest(BaseModel):
     web_trees: tuple[str, ...]
     documentation_trees: tuple[str, ...]
 
-    @field_validator(
-        "application_files", "application_trees", "web_trees", "documentation_trees"
-    )
+    @field_validator("application_files", "application_trees", "web_trees", "documentation_trees")
     @classmethod
     def safe_relative_entries(cls, values: tuple[str, ...]) -> tuple[str, ...]:
         if len(values) != len(set(values)):

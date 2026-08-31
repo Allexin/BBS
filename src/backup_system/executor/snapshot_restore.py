@@ -54,9 +54,7 @@ class SnapshotRestore:
             self._cancellation,
             ready_sink=self._ready_sink,
             progress_sink=lambda files_done, files_total, bytes_done, bytes_total: (
-                self._progress_sink(
-                    "verifying", files_done, files_total, bytes_done, bytes_total
-                )
+                self._progress_sink("verifying", files_done, files_total, bytes_done, bytes_total)
             ),
         )
         result = target.create(
@@ -102,14 +100,13 @@ class SnapshotRestore:
 
 
 def _remove_staging(staging: Path) -> None:
-    def retry_readonly(
-        function: Callable[[str], object], path: str, error: BaseException
-    ) -> None:
+    def retry_readonly(function: Callable[[str], object], path: str, error: BaseException) -> None:
         del error
         os.chmod(path, stat.S_IWRITE)
         function(path)
 
     shutil.rmtree(staging, onexc=retry_readonly)
+
 
 def resolve_snapshot_version(
     runner: ResticRunner,
@@ -136,9 +133,7 @@ def resolve_snapshot_version(
         return _full_snapshot_id(latest)
     if _SNAPSHOT_ID.fullmatch(requested) is None:
         raise RestoreTargetError("snapshot ID has invalid syntax")
-    matches = [
-        item for item in snapshots if requested in {item.get("id"), item.get("short_id")}
-    ]
+    matches = [item for item in snapshots if requested in {item.get("id"), item.get("short_id")}]
     if len(matches) != 1:
         raise RestoreTargetError("snapshot ID does not uniquely belong to this job")
     return _full_snapshot_id(matches[0])

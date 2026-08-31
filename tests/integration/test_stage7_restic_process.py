@@ -19,9 +19,7 @@ pytestmark = [
     ("line", "fault"),
     [
         (
-            json.dumps(
-                {"message_type": "error", "during": "archival", "error": "fixture"}
-            ),
+            json.dumps({"message_type": "error", "during": "archival", "error": "fixture"}),
             "source_read_error",
         ),
         ("write: There is not enough space on the disk.", "repository_out_of_space"),

@@ -171,9 +171,11 @@ def test_distinct_repositories_may_share_one_volume_marker(tmp_path: Path) -> No
         encoding="utf-8",
     )
     original = (tmp_path / "jobs" / "data.yaml").read_text(encoding="utf-8")
-    second = original.replace("id: data", "id: second", 1).replace(
-        "repository_id: primary", "repository_id: second"
-    ).replace(r"C:\Backup\restic", r"C:\Backup\second")
+    second = (
+        original.replace("id: data", "id: second", 1)
+        .replace("repository_id: primary", "repository_id: second")
+        .replace(r"C:\Backup\restic", r"C:\Backup\second")
+    )
     _write(tmp_path / "jobs" / "second.yaml", second)
 
     manager, _ = validate_config_tree(manager_path)

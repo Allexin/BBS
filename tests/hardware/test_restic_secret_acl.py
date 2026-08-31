@@ -13,9 +13,7 @@ def _running_as_local_system() -> bool:
     import win32api  # type: ignore[import-untyped]
     import win32security  # type: ignore[import-untyped]
 
-    token = win32security.OpenProcessToken(
-        win32api.GetCurrentProcess(), win32security.TOKEN_QUERY
-    )
+    token = win32security.OpenProcessToken(win32api.GetCurrentProcess(), win32security.TOKEN_QUERY)
     current_sid = win32security.GetTokenInformation(token, win32security.TokenUser)[0]
     system_sid = win32security.CreateWellKnownSid(win32security.WinLocalSystemSid, None)
     return bool(current_sid == system_sid)

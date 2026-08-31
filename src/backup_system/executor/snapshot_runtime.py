@@ -108,9 +108,7 @@ def _validated_repository(config: SnapshotJobConfig | MaintenanceJobConfig) -> P
     return Path(repository)
 
 
-def _emit_progress(
-    event: Mapping[str, Any], sink: Callable[[EventBase], None]
-) -> None:
+def _emit_progress(event: Mapping[str, Any], sink: Callable[[EventBase], None]) -> None:
     if event.get("message_type") != "status":
         return
     sink(

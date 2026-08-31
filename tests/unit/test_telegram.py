@@ -34,9 +34,7 @@ def test_sender_posts_expected_telegram_request() -> None:
 
 def test_sender_can_target_forum_topic() -> None:
     def handle(request: httpx.Request) -> httpx.Response:
-        assert request.read() == (
-            b'{"chat_id":"test-chat","text":"hello","message_thread_id":42}'
-        )
+        assert request.read() == (b'{"chat_id":"test-chat","text":"hello","message_thread_id":42}')
         return httpx.Response(200, json={"ok": True})
 
     TelegramSender(
@@ -47,9 +45,7 @@ def test_sender_can_target_forum_topic() -> None:
     ).send("hello")
 
 
-def test_async_dispatcher_moves_blocking_work_off_event_loop(
-    monkeypatch, tmp_path: Path
-) -> None:
+def test_async_dispatcher_moves_blocking_work_off_event_loop(monkeypatch, tmp_path: Path) -> None:
     observed: list[tuple[object, ...]] = []
 
     def dispatch(*values: object) -> DispatchResult:
@@ -68,9 +64,7 @@ def test_async_dispatcher_moves_blocking_work_off_event_loop(
         ).dispatch_one(now=now)
     )
     assert result is DispatchResult.IDLE
-    assert observed == [
-        (tmp_path / "manager.sqlite3", "test-token", "test-chat", 42, None, now)
-    ]
+    assert observed == [(tmp_path / "manager.sqlite3", "test-token", "test-chat", 42, None, now)]
 
 
 def test_dispatcher_marks_successful_notification_sent(tmp_path: Path) -> None:

@@ -85,8 +85,7 @@ class SmartHistoryRepository:
         previous_metrics = previous[1] if previous is not None and comparable else None
         regressions, resets = self._compare(previous_metrics, metrics)
         new_critical_conditions = (
-            _absolute_critical_conditions(metrics)
-            - _absolute_critical_conditions(previous_metrics)
+            _absolute_critical_conditions(metrics) - _absolute_critical_conditions(previous_metrics)
             if collection_success
             else set()
         )

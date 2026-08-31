@@ -56,9 +56,7 @@ class CommandProcessor:
                 outcome = self._process(command)
             except (RuntimeError, ValueError, sqlite3.Error):
                 self._spool.mark_rejected(command.command_id)
-                processed.append(
-                    ProcessedCommand(command.command_id, CommandDisposition.REJECTED)
-                )
+                processed.append(ProcessedCommand(command.command_id, CommandDisposition.REJECTED))
                 continue
             self._spool.mark_completed(command.command_id)
             self._spool.write_result(
@@ -103,9 +101,7 @@ class CommandProcessor:
                 EnqueueDisposition.DEDUPLICATED: CommandDisposition.DEDUPLICATED,
                 EnqueueDisposition.COALESCED: CommandDisposition.COALESCED,
             }[enqueue_result.disposition]
-            outcome = ProcessedCommand(
-                command.command_id, disposition, enqueue_result.operation_id
-            )
+            outcome = ProcessedCommand(command.command_id, disposition, enqueue_result.operation_id)
         elif isinstance(command, QueueRemoveCommand):
             remove_result = self._operations.remove_queued(command.operation_id)
             disposition = {

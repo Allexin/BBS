@@ -114,17 +114,25 @@ def test_self_test_result_is_bound_to_run(tmp_path: Path) -> None:
     now = datetime.now(UTC)
     operations.upsert_job(job_id="smart", display_name="SMART", enabled=True, config_valid=True)
     operations.enqueue(
-        deduplication_key="smart:test", job_id="smart", kind="smart-test",
-        trigger_source="manual", queued_at=now,
+        deduplication_key="smart:test",
+        job_id="smart",
+        kind="smart-test",
+        trigger_source="manual",
+        queued_at=now,
     )
     run = operations.claim_next(started_at=now)
     assert run is not None
     ingestor = ExecutorEventIngestor(SmartHistoryRepository(connection))
     ingestor.ingest(
         SmartTestDiskFinished(
-            event="smart_test_disk_finished", timestamp=now, disk_id="system-disk-1",
-            identity_key="a" * 64, test_type="short", result="timeout",
-            reason="SMART self-test completion timed out", duration_seconds=900,
+            event="smart_test_disk_finished",
+            timestamp=now,
+            disk_id="system-disk-1",
+            identity_key="a" * 64,
+            test_type="short",
+            result="timeout",
+            reason="SMART self-test completion timed out",
+            duration_seconds=900,
             remaining_percent=90,
         ),
         run_id=run.run_id,

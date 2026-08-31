@@ -123,11 +123,7 @@ class RestoreTarget:
             ):
                 raise RestoreVerificationError("restored file content does not match backup")
             bytes_done += item.size_bytes
-            if (
-                index == 1
-                or index == len(entries)
-                or index % _PROGRESS_FILE_INTERVAL == 0
-            ):
+            if index == 1 or index == len(entries) or index % _PROGRESS_FILE_INTERVAL == 0:
                 self._progress_sink(index, len(entries), bytes_done, total_bytes)
         marker = result / ".restore-incomplete"
         marker.unlink()

@@ -77,9 +77,7 @@ def test_projection_failure_does_not_stop_manager(tmp_path: Path, capsys: object
     initialize_data_layout(layout)
     connection = open_manager_database(layout.database)
     operations = OperationsRepository(connection)
-    operations.upsert_job(
-        job_id="data", display_name="Data", enabled=True, config_valid=True
-    )
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
     application = ManagerApplication(layout=layout, config=_config(), operations=operations)
     application._projection_publisher = _FailingPublisher()  # type: ignore[assignment]
     try:
@@ -100,9 +98,7 @@ def test_empty_notification_outbox_does_not_start_async_dispatcher(tmp_path: Pat
     initialize_data_layout(layout)
     connection = open_manager_database(layout.database)
     operations = OperationsRepository(connection)
-    operations.upsert_job(
-        job_id="data", display_name="Data", enabled=True, config_valid=True
-    )
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
     dispatcher = _RecordingNotificationDispatcher()
     application = ManagerApplication(
         layout=layout,
@@ -139,9 +135,7 @@ class _SuccessfulExecutor:
         now = datetime.now(UTC)
         callback = self._on_event
         callback(
-            RunStarted(
-                event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data"
-            )
+            RunStarted(event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data")
         )
         callback(DiskOfflineConfirmed(event="disk_offline_confirmed", timestamp=now))
         terminal = RunFinished(
@@ -168,9 +162,7 @@ class _CancellableExecutor:
         now = datetime.now(UTC)
         callback = self._on_event
         callback(
-            RunStarted(
-                event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data"
-            )
+            RunStarted(event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data")
         )
         self.started.set()
         await self.cancelled.wait()
@@ -198,16 +190,12 @@ class _ResolvingExecutor:
     async def run(self, invocation: object) -> ExecutorProcessResult:
         version = None
         if invocation.request_file is not None:
-            version = json.loads(
-                invocation.request_file.read_text(encoding="utf-8")
-            )["version"]
+            version = json.loads(invocation.request_file.read_text(encoding="utf-8"))["version"]
         self._observed.append((invocation.operation, version))
         now = datetime.now(UTC)
         callback = self._on_event
         callback(
-            RunStarted(
-                event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data"
-            )
+            RunStarted(event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data")
         )
         if invocation.operation == "resolve-restore":
             callback(
@@ -241,17 +229,13 @@ def test_restore_latest_is_pinned_before_a_later_backup_runs(tmp_path: Path) -> 
     connection = open_manager_database(layout.database)
     operations = OperationsRepository(connection)
     config = _config()
-    operations.upsert_job(
-        job_id="data", display_name="Data", enabled=True, config_valid=True
-    )
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
     observed: list[tuple[str, str | None]] = []
     application = ManagerApplication(
         layout=layout,
         config=config,
         operations=operations,
-        executor_factory=lambda on_event, on_stderr: _ResolvingExecutor(
-            on_event, observed
-        ),
+        executor_factory=lambda on_event, on_stderr: _ResolvingExecutor(on_event, observed),
     )
     application.initialize()
     accepted_at = datetime.now(UTC)
@@ -316,9 +300,7 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         layout=layout,
         config=config,
         operations=operations,
-        executor_factory=lambda on_event, on_stderr: _SuccessfulExecutor(
-            on_event, invocations
-        ),
+        executor_factory=lambda on_event, on_stderr: _SuccessfulExecutor(on_event, invocations),
         journal=journal,
         log_projection=LogProjectionPublisher(layout.public_logs),
     )
@@ -331,6 +313,7 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
     )
     publish_command(root, command)
     try:
+
         async def execute() -> bool:
             started = await application.run_iteration()
             await application.wait_executor()
@@ -375,9 +358,7 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
     connection = open_manager_database(layout.database)
     operations = OperationsRepository(connection)
     config = _config()
-    operations.upsert_job(
-        job_id="data", display_name="Data", enabled=True, config_valid=True
-    )
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
     executor: _CancellableExecutor | None = None
 
     def factory(on_event: object, on_stderr: object) -> _CancellableExecutor:
@@ -395,12 +376,12 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
     application.initialize()
     publish_command(
         root,
-            RunCommand(
+        RunCommand(
             command_id=new_command_id(),
             created_at=datetime.now(UTC),
             kind="run",
             job_id="data",
-            ),
+        ),
     )
 
     async def scenario() -> None:
@@ -409,9 +390,9 @@ def test_cancel_command_is_processed_while_executor_is_running(tmp_path: Path) -
         await executor.started.wait()
         assert application.executor_active
         await application.publish("running")
-        assert '"manager_state":"running"' in (
-            layout.public / "health.json"
-        ).read_text(encoding="utf-8")
+        assert '"manager_state":"running"' in (layout.public / "health.json").read_text(
+            encoding="utf-8"
+        )
         cancel = CancelCurrentCommand(
             command_id=new_command_id(),
             created_at=datetime.now(UTC),
@@ -443,9 +424,7 @@ def test_executor_transport_failure_becomes_durable_run_and_alert(tmp_path: Path
     notifications = NotificationRepository(connection)
     operations = OperationsRepository(connection, notifications)
     config = _config()
-    operations.upsert_job(
-        job_id="data", display_name="Data", enabled=True, config_valid=True
-    )
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
 
     class FailingExecutor:
         async def run(self, invocation: object) -> ExecutorProcessResult:
@@ -479,8 +458,7 @@ def test_executor_transport_failure_becomes_durable_run_and_alert(tmp_path: Path
             "SELECT result, exit_code, disk_offline_confirmed FROM runs"
         ).fetchone() == ("failed", 30, 0)
         kinds = {
-            str(row[0])
-            for row in connection.execute("SELECT kind FROM notifications").fetchall()
+            str(row[0]) for row in connection.execute("SELECT kind FROM notifications").fetchall()
         }
         assert kinds == {"run_failed", "disk_offline_unconfirmed"}
     finally:
@@ -496,9 +474,7 @@ def test_service_shutdown_cancels_live_executor_and_discards_tail(tmp_path: Path
     connection = open_manager_database(layout.database)
     operations = OperationsRepository(connection)
     config = _config()
-    operations.upsert_job(
-        job_id="data", display_name="Data", enabled=True, config_valid=True
-    )
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
     executor: _CancellableExecutor | None = None
 
     def factory(on_event: object, on_stderr: object) -> _CancellableExecutor:
@@ -548,11 +524,11 @@ def test_service_shutdown_cancels_live_executor_and_discards_tail(tmp_path: Path
 
     try:
         asyncio.run(scenario())
-        assert connection.execute(
-            "SELECT result FROM runs ORDER BY started_at"
-        ).fetchone() == ("cancelled",)
-        assert '"manager_state":"stopping"' in (
-            layout.public / "health.json"
-        ).read_text(encoding="utf-8")
+        assert connection.execute("SELECT result FROM runs ORDER BY started_at").fetchone() == (
+            "cancelled",
+        )
+        assert '"manager_state":"stopping"' in (layout.public / "health.json").read_text(
+            encoding="utf-8"
+        )
     finally:
         connection.close()

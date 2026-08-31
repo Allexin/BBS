@@ -99,9 +99,7 @@ class MirrorAdapter:
             )
             entries = catalog.entries()
             unchanged = (
-                frozenset()
-                if force_copy_all
-                else _unchanged_keys(source, destination, entries)
+                frozenset() if force_copy_all else _unchanged_keys(source, destination, entries)
             )
             plan = build_plan(source, destination, unchanged_path_keys=unchanged)
             capacity = assess_capacity(plan, volume_free_bytes=volume_free_bytes)
@@ -148,9 +146,7 @@ class MirrorAdapter:
                 )
                 entries = catalog.entries()
                 present = {
-                    key: value
-                    for key, value in entries.items()
-                    if value.desired_state == "present"
+                    key: value for key, value in entries.items() if value.desired_state == "present"
                 }
                 _verify_metadata(destination, present)
                 selected = _select_for_hash(present, mode)

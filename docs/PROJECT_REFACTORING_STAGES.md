@@ -21,7 +21,8 @@
   коммитов, оставляющей `main` в проверяемом состоянии.
 - Для каждой исправляемой ошибки сначала добавляется regression-проверка, либо она
   добавляется в том же коммите с исправлением.
-- Обязательный программный gate каждого этапа: `ruff check .`, strict `mypy`, полный
+- Обязательный программный gate каждого этапа: `ruff check .`, `ruff format --check .`,
+  strict `mypy`, полный
   `pytest`. Связанные Windows/hardware acceptance выполняются отдельно, когда этап
   затрагивает соответствующий runtime.
 - Разработка и автоматические тесты не читают и не изменяют Stable. Production deploy
@@ -198,6 +199,11 @@ Findings: F-04, F-05.
 
 Findings: F-12, F-15 и замечание о форматировании.
 
+**Статус: завершён.** Полный gate на Python 3.12 и 3.13: 422 tests collected,
+413 passed, 9 skipped; `ruff check`, `ruff format --check` и `mypy` проходят на
+обеих версиях. LocalSystem ACL regression добавлен в hardware-набор и ожидает
+фактического запуска при R6 acceptance.
+
 ### Работы
 
 - [x] Удалить неиспользуемый `common/json_io.py` и ссылки на него либо обосновать и
@@ -207,7 +213,7 @@ Findings: F-12, F-15 и замечание о форматировании.
    - только после read-back verification записывать passphrase;
    - гарантировать cleanup при ошибке на любом шаге.
 - [x] Добавить Windows security regression test, не использующий production credentials.
-4. Отдельным механическим коммитом применить `ruff format` и включить
+- [x] Отдельным механическим коммитом применить `ruff format` и включить
    `ruff format --check` в обычный gate. Не смешивать форматирование с логикой.
 
 ### Приёмка
@@ -263,5 +269,5 @@ Findings: F-12, F-15 и замечание о форматировании.
 - [x] R2 — runtime journal и Logs UI
 - [x] R3 — длинные операции и lifecycle
 - [x] R4 — CLI-контракты
-- [ ] R5 — security hardening и форматирование
+- [x] R5 — security hardening и форматирование
 - [ ] R6 — повторное ревью и production acceptance

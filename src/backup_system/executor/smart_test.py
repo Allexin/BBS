@@ -277,9 +277,7 @@ def parse_self_test_status(payload: dict[str, Any]) -> SmartSelfTestStatus:
             return SmartSelfTestStatus(False, passed, description)
     nvme = payload.get("nvme_self_test_log")
     current = nvme.get("current_self_test_operation") if isinstance(nvme, dict) else None
-    current_value = (
-        _nonnegative_int(current.get("value")) if isinstance(current, dict) else None
-    )
+    current_value = _nonnegative_int(current.get("value")) if isinstance(current, dict) else None
     if current_value not in {None, 0}:
         if not isinstance(nvme, dict):
             raise SmartSelfTestError("invalid NVMe self-test status")
@@ -318,9 +316,11 @@ def _normalize(value: str) -> str:
 
 
 def _public_details(payload: dict[str, Any]) -> dict[str, str]:
-    protocol = str(payload.get("device", {}).get("protocol", "")) if isinstance(
-        payload.get("device"), dict
-    ) else ""
+    protocol = (
+        str(payload.get("device", {}).get("protocol", ""))
+        if isinstance(payload.get("device"), dict)
+        else ""
+    )
     model = str(payload.get("model_name", "")).strip()
     family = str(payload.get("model_family", "")).strip()
     rotation = payload.get("rotation_rate")
@@ -339,10 +339,15 @@ def _manufacturer(payload: dict[str, Any], model: str, family: str) -> str:
         return explicit
     material = f"{model} {family}".casefold()
     brands = (
-        ("kingston", "Kingston"), ("toshiba", "Toshiba"),
-        ("western digital", "Western Digital"), ("wdc", "Western Digital"),
-        ("seagate", "Seagate"), ("samsung", "Samsung"), ("crucial", "Crucial"),
-        ("intel", "Intel"), ("sandisk", "SanDisk"),
+        ("kingston", "Kingston"),
+        ("toshiba", "Toshiba"),
+        ("western digital", "Western Digital"),
+        ("wdc", "Western Digital"),
+        ("seagate", "Seagate"),
+        ("samsung", "Samsung"),
+        ("crucial", "Crucial"),
+        ("intel", "Intel"),
+        ("sandisk", "SanDisk"),
     )
     for marker, display in brands:
         if marker in material:

@@ -142,6 +142,7 @@ class ScheduleStore:
         return StartupScheduleResult(
             False, evaluation.missed_at, phase_for(schedule, cursor), evaluation.next_fire_at
         )
+
     def poll(
         self,
         job_id: str,

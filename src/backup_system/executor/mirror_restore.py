@@ -69,9 +69,7 @@ class MirrorRestore:
             self._cancellation,
             ready_sink=self._ready_sink,
             progress_sink=lambda files_done, files_total, bytes_done, bytes_total: (
-                self._progress_sink(
-                    "verifying", files_done, files_total, bytes_done, bytes_total
-                )
+                self._progress_sink("verifying", files_done, files_total, bytes_done, bytes_total)
             ),
         )
         result = target.create(
@@ -95,9 +93,7 @@ class MirrorRestore:
         return target.verify_and_complete(result, manifest)
 
 
-def _selected_entries(
-    entries: Iterable[CatalogEntry], selection: str
-) -> tuple[CatalogEntry, ...]:
+def _selected_entries(entries: Iterable[CatalogEntry], selection: str) -> tuple[CatalogEntry, ...]:
     selected: list[CatalogEntry] = []
     wanted = _parts(selection)
     for entry in entries:

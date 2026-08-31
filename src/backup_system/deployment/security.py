@@ -27,21 +27,15 @@ class SecurityBackend(Protocol):
     def apply_and_verify(self, path: Path, sddl: str) -> None: ...
 
 
-def apply_administrative_acl(
-    path: Path, *, backend: SecurityBackend | None = None
-) -> None:
+def apply_administrative_acl(path: Path, *, backend: SecurityBackend | None = None) -> None:
     if not path.exists() or _is_reparse(path):
         raise StableAclError("administrative ACL target is missing or unsafe")
     selected = backend or _Pywin32SecurityBackend()
     inheritance = "OICI" if path.is_dir() else ""
-    selected.apply_and_verify(
-        path, f"D:P(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;BA)"
-    )
+    selected.apply_and_verify(path, f"D:P(A;{inheritance};FA;;;SY)(A;{inheritance};FA;;;BA)")
 
 
-def stable_acl_targets(
-    nginx_sid: str, deployment_sid: str | None = None
-) -> tuple[AclTarget, ...]:
+def stable_acl_targets(nginx_sid: str, deployment_sid: str | None = None) -> tuple[AclTarget, ...]:
     if not nginx_sid.startswith("S-"):
         raise StableAclError("nginx account SID is invalid")
     administrative = "(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
@@ -51,9 +45,7 @@ def stable_acl_targets(
         else ""
     )
     return (
-        AclTarget(
-            ".", f"D:P{administrative}{deployment_full}(A;OICI;GRGX;;;BU)"
-        ),
+        AclTarget(".", f"D:P{administrative}{deployment_full}(A;OICI;GRGX;;;BU)"),
         AclTarget(
             "data",
             f"D:P{administrative}{deployment_full}(A;;GX;;;{nginx_sid})",
@@ -78,9 +70,7 @@ def apply_stable_acls(
     selected = backend or _Pywin32SecurityBackend()
     nginx_sid = selected.account_sid_string(nginx_account)
     deployment_sid = (
-        selected.account_sid_string(deployment_account)
-        if deployment_account is not None
-        else None
+        selected.account_sid_string(deployment_account) if deployment_account is not None else None
     )
     targets = stable_acl_targets(nginx_sid, deployment_sid)
     by_path = {target.relative_path: target for target in targets}
@@ -95,10 +85,7 @@ def apply_stable_acls(
     if deployment_account is not None:
         if deployment_sid is None:
             raise StableAclError("deployment account SID is unavailable")
-        application_sddl = (
-            "D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)"
-            f"(A;OICI;FA;;;{deployment_sid})"
-        )
+        application_sddl = f"D:P(A;OICI;FA;;;SY)(A;OICI;FA;;;BA)(A;OICI;FA;;;{deployment_sid})"
         for name in ("app", ".venv", "web"):
             path = root / name
             if not path.is_dir() or _is_reparse(path):
@@ -136,8 +123,7 @@ class _Pywin32SecurityBackend:
             security.SetNamedSecurityInfo(
                 str(path),
                 security.SE_FILE_OBJECT,
-                security.DACL_SECURITY_INFORMATION
-                | security.PROTECTED_DACL_SECURITY_INFORMATION,
+                security.DACL_SECURITY_INFORMATION | security.PROTECTED_DACL_SECURITY_INFORMATION,
                 None,
                 None,
                 expected.GetSecurityDescriptorDacl(),
@@ -170,9 +156,7 @@ def _normalized_dacl(value: str) -> str:
     # SetNamedSecurityInfo may split one inheritable read/execute ACE into an
     # object ACE plus an inherit-only child ACE. The masks below are the Windows
     # canonical rendering of GENERIC_READ | GENERIC_EXECUTE for the object.
-    pattern = re.compile(
-        r"\(A;;0x1200a9;;;([^)]+)\)\(A;OICIIO;GXGR;;;\1\)"
-    )
+    pattern = re.compile(r"\(A;;0x1200a9;;;([^)]+)\)\(A;OICIIO;GXGR;;;\1\)")
     normalized = pattern.sub(r"(A;OICI;GXGR;;;\1)", normalized)
     # Directory GENERIC_EXECUTE is rendered as FILE_GENERIC_EXECUTE on read-back.
     return re.sub(r"\(A;;FX;;;([^)]+)\)", r"(A;;GX;;;\1)", normalized)

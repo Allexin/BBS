@@ -199,9 +199,11 @@ class MirrorCatalog:
             self._set_meta("generation_id", str(generation_id))
 
     def verification_gate_active(self) -> bool:
-        row = self._require_connection().execute(
-            "SELECT value FROM catalog_meta WHERE key='verification_gate'"
-        ).fetchone()
+        row = (
+            self._require_connection()
+            .execute("SELECT value FROM catalog_meta WHERE key='verification_gate'")
+            .fetchone()
+        )
         return row is not None and str(row[0]) == "active"
 
     def activate_verification_gate(self) -> None:
@@ -296,9 +298,7 @@ def _entry(row: sqlite3.Row) -> CatalogEntry:
         relative_path=str(row["relative_path"]),
         desired_state=str(row["desired_state"]),
         size_bytes=None if row["size_bytes"] is None else int(row["size_bytes"]),
-        source_mtime_ns=(
-            None if row["source_mtime_ns"] is None else int(row["source_mtime_ns"])
-        ),
+        source_mtime_ns=(None if row["source_mtime_ns"] is None else int(row["source_mtime_ns"])),
         sha256=None if digest is None else bytes(digest),
         content_generation=(
             None if row["content_generation"] is None else str(row["content_generation"])

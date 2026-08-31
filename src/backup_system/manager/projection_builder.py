@@ -215,9 +215,8 @@ class ProjectionBuilder:
                 health, reason = "critical", "Configuration is invalid"
             elif health_run is not None and health_run.result == "failed":
                 run_id = str(health_row[6]) if health_row is not None else ""
-                if (
-                    self._job_kinds.get(job_id) == "smart-test"
-                    and self._smart_failure_is_excluded(run_id)
+                if self._job_kinds.get(job_id) == "smart-test" and self._smart_failure_is_excluded(
+                    run_id
                 ):
                     health, reason = "healthy", "Latest run failed only on excluded disks"
                 else:
@@ -290,8 +289,7 @@ class ProjectionBuilder:
             (run_id,),
         ).fetchall()
         return bool(failed) and all(
-            self._disk_health_policies.get(f"disk-{str(row[0])[:12]}", (True, ""))[0]
-            is False
+            self._disk_health_policies.get(f"disk-{str(row[0])[:12]}", (True, ""))[0] is False
             for row in failed
         )
 
@@ -341,6 +339,7 @@ class ProjectionBuilder:
             if row
             else None
         )
+
     def _disks(self, now: datetime) -> tuple[tuple[PublicDisk, ...], tuple[PublicHealthIssue, ...]]:
         disks: list[PublicDisk] = []
         issues: list[PublicHealthIssue] = []
@@ -358,8 +357,7 @@ class ProjectionBuilder:
                 (str(row[0]),),
             ).fetchone()
             latest_identity = (
-                str(json.loads(str(latest_row[3])).get("identity_key"))
-                if latest_row else None
+                str(json.loads(str(latest_row[3])).get("identity_key")) if latest_row else None
             )
             if latest_identity is not None and latest_identity in seen_identities:
                 continue
@@ -380,17 +378,15 @@ class ProjectionBuilder:
             smart_health = (
                 "unknown"
                 if stale
-                else _smart_health(str(latest_row[2])) if latest_row else "unknown"
+                else _smart_health(str(latest_row[2]))
+                if latest_row
+                else "unknown"
             )
             effective_health = _effective_disk_health(
                 smart_health, str(test_row[0]) if test_row else None, stale=stale
             )
-            public_id = (
-                f"disk-{latest_identity[:12]}" if latest_identity else str(row[1])
-            )
-            affects_health, policy_reason = self._disk_health_policies.get(
-                public_id, (True, "")
-            )
+            public_id = f"disk-{latest_identity[:12]}" if latest_identity else str(row[1])
+            affects_health, policy_reason = self._disk_health_policies.get(public_id, (True, ""))
             health_reasons = _disk_health_reasons(
                 observations[0][1] if observations else {},
                 str(test_row[0]) if test_row else None,
@@ -432,7 +428,8 @@ class ProjectionBuilder:
                             duration_seconds=int(test_row[4]),
                             remaining_percent=test_row[5],
                         )
-                        if test_row else None
+                        if test_row
+                        else None
                     ),
                     mount_points=tuple(json.loads(str(row[8]))),
                     affects_system_health=affects_health,
@@ -533,11 +530,7 @@ class ProjectionBuilder:
 
 
 def _completed_duration(row: tuple[Any, ...]) -> int:
-    started = (
-        datetime.fromisoformat(str(row[0]))
-        if row[0]
-        else datetime.fromisoformat(str(row[2]))
-    )
+    started = datetime.fromisoformat(str(row[0])) if row[0] else datetime.fromisoformat(str(row[2]))
     finished = datetime.fromisoformat(str(row[1]))
     return max(0, int((finished - started).total_seconds()))
 

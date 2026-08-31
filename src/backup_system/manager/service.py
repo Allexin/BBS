@@ -102,8 +102,7 @@ async def run_service(
             config=config,
             operations=operations,
             job_kinds={
-                job_id: executor_config.kind
-                for job_id, executor_config in executor_configs.items()
+                job_id: executor_config.kind for job_id, executor_config in executor_configs.items()
             },
             job_protection_info=job_protection_info(layout.config, config),
             notification_dispatcher=notification_dispatcher,
@@ -164,9 +163,7 @@ def _install_console_stop(lifecycle: ServiceLifecycle) -> None:
         signal.signal(signal.SIGBREAK, request_stop)
 
 
-async def _run_manager_loop(
-    application: ManagerApplication, *, poll_seconds: int
-) -> None:
+async def _run_manager_loop(application: ManagerApplication, *, poll_seconds: int) -> None:
     while application.accepting:
         executed = await application.run_iteration()
         await application.publish("running" if application.executor_active else "idle")
@@ -190,9 +187,7 @@ def _notification_dispatcher(
     telegram = config.telegram
     if not telegram.enabled:
         return None
-    credentials = load_telegram_credentials(
-        layout.config, telegram.credentials_file
-    )
+    credentials = load_telegram_credentials(layout.config, telegram.credentials_file)
     return AsyncNotificationDispatcher(
         layout.database,
         token=credentials.bot_token,

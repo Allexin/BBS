@@ -47,8 +47,7 @@ def _match(
     component = pattern[pattern_index]
     if component == "**":
         return _match(pattern, path, pattern_index + 1, path_index) or (
-            path_index < len(path)
-            and _match(pattern, path, pattern_index, path_index + 1)
+            path_index < len(path) and _match(pattern, path, pattern_index, path_index + 1)
         )
     if path_index == len(path) or not fnmatchcase(path[path_index], component):
         return False

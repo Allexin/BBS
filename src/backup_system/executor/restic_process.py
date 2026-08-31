@@ -188,11 +188,7 @@ def _parse_events(line: str) -> tuple[Mapping[str, Any], ...]:
 
 
 def _fault_diagnostic(line: str, events: tuple[Mapping[str, Any], ...]) -> str:
-    value = (
-        json.dumps(events[0], ensure_ascii=True, separators=(",", ":"))
-        if events
-        else line
-    )
+    value = json.dumps(events[0], ensure_ascii=True, separators=(",", ":")) if events else line
     return value[:4000]
 
 

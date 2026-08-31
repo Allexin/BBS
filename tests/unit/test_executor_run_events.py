@@ -139,8 +139,7 @@ def test_resolver_event_pins_restore_before_success_is_committed(tmp_path: Path)
             )
         )
         assert connection.execute(
-            "SELECT json_extract(request_json, '$.version') FROM operations "
-            "WHERE kind = 'restore'"
+            "SELECT json_extract(request_json, '$.version') FROM operations WHERE kind = 'restore'"
         ).fetchone() == ("b" * 64,)
     finally:
         connection.close()

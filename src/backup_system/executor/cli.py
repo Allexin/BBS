@@ -134,11 +134,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                     backend.discover()
                     if config.target.mode == "all-system"
                     else tuple(
-                        item
-                        for item in smart_config.disks
-                        if item.id == config.target.disk_id
+                        item for item in smart_config.disks if item.id == config.target.disk_id
                     )
                 )
+
                 def report_disk(index: int, total: int) -> None:
                     event_sink(
                         StageChanged(
@@ -196,9 +195,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     StageChanged(
                         event="stage_changed",
                         timestamp=utc_now(),
-                        stage=(
-                            "smart-test-completed"
-                        ),
+                        stage=("smart-test-completed"),
                     )
                 )
             except BaseException as error:

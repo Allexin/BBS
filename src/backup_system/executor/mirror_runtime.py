@@ -101,9 +101,6 @@ def _validated_destination(config: MirrorJobConfig) -> Path:
     mount = PureWindowsPath(config.disk.mount_point)
     mount_parts = tuple(part.casefold() for part in mount.parts)
     destination_parts = tuple(part.casefold() for part in destination.parts)
-    if (
-        destination == mount
-        or destination_parts[: len(mount_parts)] != mount_parts
-    ):
+    if destination == mount or destination_parts[: len(mount_parts)] != mount_parts:
         raise MirrorRuntimeError("mirror destination must be inside the verified backup mount")
     return Path(destination)

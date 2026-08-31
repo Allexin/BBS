@@ -213,9 +213,7 @@ def test_failed_run_and_unconfirmed_offline_queue_immediate_alerts(tmp_path: Pat
 def test_always_online_failure_never_sets_disk_lifecycle_latch(tmp_path: Path) -> None:
     connection = open_manager_database(tmp_path / "manager.sqlite3")
     notifications = NotificationRepository(connection)
-    repository = OperationsRepository(
-        connection, notifications, managed_disk_jobs=set()
-    )
+    repository = OperationsRepository(connection, notifications, managed_disk_jobs=set())
     repository.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
     try:
         repository.enqueue(
@@ -235,9 +233,7 @@ def test_always_online_failure_never_sets_disk_lifecycle_latch(tmp_path: Path) -
 
         assert SafetyLatchRepository(connection).active() is None
         assert connection.execute("SELECT disk_offline_confirmed FROM runs").fetchone() == (1,)
-        assert connection.execute("SELECT kind FROM notifications").fetchall() == [
-            ("run_failed",)
-        ]
+        assert connection.execute("SELECT kind FROM notifications").fetchall() == [("run_failed",)]
     finally:
         connection.close()
 

@@ -342,6 +342,7 @@ class SmartTestJobConfig(JobBase):
     poll_seconds: int = Field(gt=0)
     timeout_seconds: int = Field(gt=0)
 
+
 ExecutorJobConfig = Annotated[
     SnapshotJobConfig | MirrorJobConfig | MaintenanceJobConfig | SmartTestJobConfig,
     Field(discriminator="kind"),

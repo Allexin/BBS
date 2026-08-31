@@ -279,16 +279,22 @@ def test_manager_accepts_explicit_nonimpacting_disk_health_policy() -> None:
         "scheduler": {"poll_seconds": 5},
         "monitoring": {
             "volumes": {"poll_seconds": 60, "items": []},
-            "smart": {"health_policies": [{
-                "disk_id": "disk-0123456789ab",
-                "affects_system_health": False,
-                "reason": "Accepted risk for temporary media",
-            }]},
+            "smart": {
+                "health_policies": [
+                    {
+                        "disk_id": "disk-0123456789ab",
+                        "affects_system_health": False,
+                        "reason": "Accepted risk for temporary media",
+                    }
+                ]
+            },
         },
         "jobs": [],
         "telegram": {
-            "enabled": False, "credentials_file": "telegram.json",
-            "daily_report_cron": "0 9 * * *", "daily_report_timezone": "Europe/Samara",
+            "enabled": False,
+            "credentials_file": "telegram.json",
+            "daily_report_cron": "0 9 * * *",
+            "daily_report_timezone": "Europe/Samara",
             "stale_manager_minutes": 10,
         },
     }

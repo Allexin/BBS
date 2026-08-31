@@ -164,9 +164,7 @@ def test_running_operation_exposes_job_id_and_progress_heartbeat(tmp_path: Path)
     now = datetime(2026, 8, 28, 12, tzinfo=UTC)
     try:
         operations = OperationsRepository(connection)
-        operations.upsert_job(
-            job_id="data", display_name="Data", enabled=True, config_valid=True
-        )
+        operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
         operations.enqueue(
             deduplication_key="data:running",
             job_id="data",
@@ -203,17 +201,20 @@ def test_active_safety_latch_is_critical_and_explains_queued_work(tmp_path: Path
     now = datetime(2026, 8, 28, tzinfo=UTC)
     try:
         operations = OperationsRepository(connection)
-        operations.upsert_job(
-            job_id="data", display_name="Data", enabled=True, config_valid=True
-        )
+        operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
         operations.enqueue(
-            deduplication_key="queued", job_id="data", kind="backup",
-            trigger_source="manual", queued_at=now,
+            deduplication_key="queued",
+            job_id="data",
+            kind="backup",
+            trigger_source="manual",
+            queued_at=now,
         )
         with connection:
             SafetyLatchRepository(connection).set_disk_lifecycle_in_transaction(
-                job_id="data", source_run_id=UUID(int=9),
-                reason="offline_not_confirmed", created_at=now,
+                job_id="data",
+                source_run_id=UUID(int=9),
+                reason="offline_not_confirmed",
+                created_at=now,
             )
 
         status, _ = ProjectionBuilder(connection).build(
@@ -232,20 +233,28 @@ def test_failed_self_test_overrides_healthy_passive_state(tmp_path: Path) -> Non
     now = datetime(2026, 8, 30, tzinfo=UTC)
     try:
         operations = OperationsRepository(connection)
-        operations.upsert_job(
-            job_id="smart", display_name="SMART", enabled=True, config_valid=True
-        )
+        operations.upsert_job(job_id="smart", display_name="SMART", enabled=True, config_valid=True)
         operation = operations.enqueue(
-            deduplication_key="smart:run", job_id="smart", kind="smart-test",
-            trigger_source="manual", queued_at=now,
+            deduplication_key="smart:run",
+            job_id="smart",
+            kind="smart-test",
+            trigger_source="manual",
+            queued_at=now,
         )
         run = operations.claim_next(started_at=now)
         assert operation is not None and run is not None
         SmartHistoryRepository(connection).record(
-            disk_id="system-disk-2", public_disk_id="ignored", identity_key="b" * 64,
-            role="monitored", observed_at=now, operational_state="unknown",
-            smart_health="healthy", metrics=SmartMetrics(overall_passed=True),
-            manufacturer="Vendor", model="Model", mount_points=("D:\\",),
+            disk_id="system-disk-2",
+            public_disk_id="ignored",
+            identity_key="b" * 64,
+            role="monitored",
+            observed_at=now,
+            operational_state="unknown",
+            smart_health="healthy",
+            metrics=SmartMetrics(overall_passed=True),
+            manufacturer="Vendor",
+            model="Model",
+            mount_points=("D:\\",),
         )
         with connection:
             connection.execute(
@@ -256,18 +265,17 @@ def test_failed_self_test_overrides_healthy_passive_state(tmp_path: Path) -> Non
                 (str(run.run_id), "b" * 64, now.isoformat()),
             )
         operations.finish_run(
-            run.run_id, result=RunResult.FAILED, exit_code=30,
-            disk_offline_confirmed=True, finished_at=now,
+            run.run_id,
+            result=RunResult.FAILED,
+            exit_code=30,
+            disk_offline_confirmed=True,
+            finished_at=now,
         )
         status, _ = ProjectionBuilder(
             connection,
             job_kinds={"smart": "smart-test"},
-            disk_health_policies={
-                f"disk-{'b' * 12}": (False, "Accepted risk for temporary media")
-            },
-        ).build(
-            now=now, manager_started_at=now, manager_state="idle", version="test"
-        )
+            disk_health_policies={f"disk-{'b' * 12}": (False, "Accepted risk for temporary media")},
+        ).build(now=now, manager_started_at=now, manager_state="idle", version="test")
         assert status.disks[0].smart_health == "warning"
         assert status.disks[0].passive_smart_health == "healthy"
         assert status.disks[0].affects_system_health is False
@@ -286,9 +294,14 @@ def test_projection_collapses_legacy_and_discovery_ids_by_identity(tmp_path: Pat
     try:
         history = SmartHistoryRepository(connection)
         history.record(
-            disk_id="test-disk", public_disk_id="test-disk", identity_key="c" * 64,
-            role="monitored", observed_at=now - timedelta(hours=1),
-            operational_state="unknown", smart_health="healthy", metrics=SmartMetrics(),
+            disk_id="test-disk",
+            public_disk_id="test-disk",
+            identity_key="c" * 64,
+            role="monitored",
+            observed_at=now - timedelta(hours=1),
+            operational_state="unknown",
+            smart_health="healthy",
+            metrics=SmartMetrics(),
         )
         normalized = connection.execute(
             "SELECT normalized_json FROM disk_observations WHERE disk_id = 'test-disk'"
@@ -323,14 +336,17 @@ def test_stale_smart_observation_is_visible_but_warns(tmp_path: Path) -> None:
     now = datetime(2026, 8, 30, tzinfo=UTC)
     try:
         SmartHistoryRepository(connection).record(
-            disk_id="old-disk", public_disk_id="ignored", identity_key="d" * 64,
-            role="monitored", observed_at=now - timedelta(hours=49),
-            operational_state="unknown", smart_health="healthy",
-            metrics=SmartMetrics(overall_passed=True), model="Old disk",
+            disk_id="old-disk",
+            public_disk_id="ignored",
+            identity_key="d" * 64,
+            role="monitored",
+            observed_at=now - timedelta(hours=49),
+            operational_state="unknown",
+            smart_health="healthy",
+            metrics=SmartMetrics(overall_passed=True),
+            model="Old disk",
         )
-        status, _ = ProjectionBuilder(
-            connection, smart_stale_after_hours=48
-        ).build(
+        status, _ = ProjectionBuilder(connection, smart_stale_after_hours=48).build(
             now=now, manager_started_at=now, manager_state="idle", version="test"
         )
         assert status.disks[0].stale

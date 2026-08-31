@@ -89,9 +89,10 @@ class SnapshotAdapter:
             raise SnapshotVerificationRequired("snapshot verification gate blocks backup")
         self._runner.verify_version()
         self._stage_sink("backing_up")
-        with self._auth(config) as base, _exclude_file(
-            config.excludes, source_root, self._secret_directory
-        ) as exclude_file:
+        with (
+            self._auth(config) as base,
+            _exclude_file(config.excludes, source_root, self._secret_directory) as exclude_file,
+        ):
             result = self._run(
                 [
                     *base,
@@ -173,9 +174,7 @@ class SnapshotAdapter:
         except ResticProcessError as error:
             raise SnapshotPruneWarning("restic prune did not complete") from error
 
-    def _snapshot_ids(
-        self, base: Sequence[str], config: SnapshotJobConfig
-    ) -> tuple[str, ...]:
+    def _snapshot_ids(self, base: Sequence[str], config: SnapshotJobConfig) -> tuple[str, ...]:
         result = self._run(
             [
                 *base,
@@ -250,9 +249,7 @@ def _backup_summary(events: Sequence[Mapping[str, Any]]) -> tuple[str, int]:
 
 
 @contextmanager
-def _exclude_file(
-    excludes: Sequence[str], source_root: Path, directory: Path
-) -> Iterator[Path]:
+def _exclude_file(excludes: Sequence[str], source_root: Path, directory: Path) -> Iterator[Path]:
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"restic-excludes-{os.getpid()}-{uuid4()}.txt"
     try:

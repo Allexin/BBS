@@ -85,7 +85,8 @@ def test_self_test_rejects_identity_mismatch_before_start() -> None:
 
 
 def test_all_system_discovery_uses_windows_disk_numbers_and_verifies_identity(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     backend = SubprocessSmartSelfTestBackend(
         tmp_path / "smartctl.exe",

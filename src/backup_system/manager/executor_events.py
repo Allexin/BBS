@@ -40,9 +40,15 @@ class ExecutorEventIngestor:
                         duration_seconds, remaining_percent, finished_at
                     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        str(run_id), event.disk_id, event.identity_key, event.test_type,
-                        event.result, event.reason, event.duration_seconds,
-                        event.remaining_percent, event.timestamp.isoformat(),
+                        str(run_id),
+                        event.disk_id,
+                        event.identity_key,
+                        event.test_type,
+                        event.result,
+                        event.reason,
+                        event.duration_seconds,
+                        event.remaining_percent,
+                        event.timestamp.isoformat(),
                     ),
                 )
             return None

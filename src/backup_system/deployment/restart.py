@@ -44,9 +44,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     return 0
 
 
-def restart_and_verify(
-    *, stable: Path, service: str, nssm: Path, timeout_seconds: int
-) -> None:
+def restart_and_verify(*, stable: Path, service: str, nssm: Path, timeout_seconds: int) -> None:
     if timeout_seconds <= 0:
         raise RestartError("timeout must be positive")
     root = stable.resolve(strict=True)

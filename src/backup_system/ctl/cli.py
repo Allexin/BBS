@@ -146,17 +146,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             "schema_version": 1,
             "job_id": arguments.job_id,
             "managed_disk": disk is not None,
-            "state": "safety_latched" if latch is not None else (
-                "configured" if disk is not None else "not_managed"
-            ),
+            "state": "safety_latched"
+            if latch is not None
+            else ("configured" if disk is not None else "not_managed"),
             "safety_latch": latch,
         }
         if disk is not None:
             projection["mount_point"] = disk.mount_point
             projection["expected_size_bytes"] = disk.expected_size_bytes
-            projection["repository_path_timeout_seconds"] = (
-                disk.repository_path_timeout_seconds
-            )
+            projection["repository_path_timeout_seconds"] = disk.repository_path_timeout_seconds
         print(json.dumps(projection, ensure_ascii=False, separators=(",", ":")))
         return 0
     if arguments.command == "config" and arguments.config_command == "validate":

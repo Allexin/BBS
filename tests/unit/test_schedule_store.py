@@ -92,9 +92,7 @@ def test_startup_recalculates_next_fire_when_cron_changes(tmp_path: Path) -> Non
                 "cycle": old_schedule.cycle,
             }
         )
-        result = store.reconcile_startup(
-            "data", changed, now=datetime(2026, 8, 30, 15, tzinfo=UTC)
-        )
+        result = store.reconcile_startup("data", changed, now=datetime(2026, 8, 30, 15, tzinfo=UTC))
 
         assert result.missed_at == ()
         assert result.next_fire_at == datetime(2026, 9, 5, 5, tzinfo=UTC)

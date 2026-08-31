@@ -142,9 +142,7 @@ class CtypesVssFactory:
 
     def create(self) -> NativeVssSession:
         result = self._ole32.CoInitializeEx(None, 0)
-        uninitialize = _com_uninitializer(
-            result, self._ole32.CoUninitialize
-        )
+        uninitialize = _com_uninitializer(result, self._ole32.CoUninitialize)
         pointer = ctypes.c_void_p()
         try:
             _check("CreateVssBackupComponents", self._create(ctypes.byref(pointer)))

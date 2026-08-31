@@ -118,9 +118,7 @@ class ManagerApplication:
             self._spool,
             operations,
             cancel_current=self.request_executor_cancel,
-            default_operations={
-                job.id: job.schedule.cycle[0].operation for job in config.jobs
-            },
+            default_operations={job.id: job.schedule.cycle[0].operation for job in config.jobs},
         )
         self._schedules = ScheduleStore(
             connection,
@@ -131,9 +129,7 @@ class ManagerApplication:
         self._deadlines = DeadlineMonitor(connection, notifications)
         self._daily_reports = DailyReportStore(connection, notifications)
         self._startup_reports = StartupReportPlanner(connection, notifications)
-        self._smart = ExecutorEventIngestor(
-            SmartHistoryRepository(connection, notifications)
-        )
+        self._smart = ExecutorEventIngestor(SmartHistoryRepository(connection, notifications))
         self._projection_builder = ProjectionBuilder(
             connection,
             job_kinds=selected_job_kinds,
@@ -423,9 +419,7 @@ class ManagerApplication:
         with self._diagnostic_lock:
             _append_rotating_log(path, chunk, max_bytes=_EXECUTOR_LOG_MAX_BYTES)
 
-    def _journal_executor_event(
-        self, claimed: ClaimedRun, event: KnownExecutorEvent
-    ) -> None:
+    def _journal_executor_event(self, claimed: ClaimedRun, event: KnownExecutorEvent) -> None:
         if isinstance(event, Progress):
             return
         severity: Severity = "info"

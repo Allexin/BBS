@@ -185,9 +185,7 @@ def _ata_attributes(payload: dict[str, Any]) -> dict[str, int]:
     for item in table:
         if not isinstance(item, dict) or not isinstance(item.get("id"), int):
             continue
-        counter = _ATA_COUNTERS.get(
-            (int(item["id"]), str(item.get("name", "")).strip().casefold())
-        )
+        counter = _ATA_COUNTERS.get((int(item["id"]), str(item.get("name", "")).strip().casefold()))
         if counter is None:
             continue
         raw = item.get("raw")
@@ -199,9 +197,15 @@ def _ata_attributes(payload: dict[str, Any]) -> dict[str, int]:
 
 def _unknown(configured: SmartDiskConfig, reason: str) -> SmartPreflightObservation:
     return SmartPreflightObservation(
-        configured.id, False, "unknown", SmartMetrics(), reason,
-        manufacturer=configured.manufacturer, model=configured.model,
-        media_type=configured.media_type, bus_type=configured.bus_type,
+        configured.id,
+        False,
+        "unknown",
+        SmartMetrics(),
+        reason,
+        manufacturer=configured.manufacturer,
+        model=configured.model,
+        media_type=configured.media_type,
+        bus_type=configured.bus_type,
         capacity_bytes=configured.identity.expected_size_bytes,
         mount_points=configured.mount_points,
         identity_key=_identity_key(configured),

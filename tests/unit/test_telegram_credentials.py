@@ -40,13 +40,9 @@ def test_credentials_reject_unknown_fields(tmp_path: Path) -> None:
     "proxy_url",
     ["ftp://proxy.example", "socks5:///missing-host", "not-a-url"],
 )
-def test_credentials_reject_invalid_proxy_url(
-    tmp_path: Path, proxy_url: str
-) -> None:
+def test_credentials_reject_invalid_proxy_url(tmp_path: Path, proxy_url: str) -> None:
     (tmp_path / "telegram.json").write_text(
-        '{"bot_token":"token","chat_id":"chat","proxy_url":"'
-        + proxy_url
-        + '"}',
+        '{"bot_token":"token","chat_id":"chat","proxy_url":"' + proxy_url + '"}',
         encoding="utf-8",
     )
     with pytest.raises(TelegramCredentialsError, match="invalid"):

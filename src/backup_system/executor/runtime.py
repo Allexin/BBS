@@ -43,9 +43,7 @@ def build_windows_job(
         coordinator=coordinator,
         source_snapshots=ExecutorSourceSnapshot(
             resolver=SourceVolumeResolver(),
-            snapshots=OwnedVssSnapshotManager(
-                vss, VssIntentStore(executor_state / "vss-intents")
-            ),
+            snapshots=OwnedVssSnapshotManager(vss, VssIntentStore(executor_state / "vss-intents")),
             cancellation_checkpoint=cancellation.raise_if_requested,
         ),
     )

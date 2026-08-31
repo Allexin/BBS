@@ -82,9 +82,7 @@ def test_scan_applies_recursive_glob_relative_to_source_root(tmp_path: Path) -> 
     _write(root / "Audiolibraries" / "Rutracker" / "audio" / "a" / "keep.mp3", b"keep")
     _write(root / "other" / "audio" / "a" / "keep.ogg", b"keep")
 
-    result = scan_tree(
-        root, excludes=(r"Audiolibraries\Rutracker\audio\**\*.ogg",)
-    )
+    result = scan_tree(root, excludes=(r"Audiolibraries\Rutracker\audio\**\*.ogg",))
 
     assert {item.relative_path for item in result.files.values()} == {
         r"Audiolibraries\Rutracker\audio\a\keep.mp3",

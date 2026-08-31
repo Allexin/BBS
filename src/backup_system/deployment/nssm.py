@@ -64,16 +64,28 @@ def configure_service(
         _checked(
             runner,
             [
-                str(nssm), "set", service_name, "AppParameters", "-m",
-                "backup_system.manager", "--config", str(config),
+                str(nssm),
+                "set",
+                service_name,
+                "AppParameters",
+                "-m",
+                "backup_system.manager",
+                "--config",
+                str(config),
             ],
         )
     else:
         _checked(
             runner,
             [
-                str(nssm), "install", service_name, str(python), "-m",
-                "backup_system.manager", "--config", str(config),
+                str(nssm),
+                "install",
+                service_name,
+                str(python),
+                "-m",
+                "backup_system.manager",
+                "--config",
+                str(config),
             ],
         )
     for setting in service_settings(root):

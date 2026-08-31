@@ -121,9 +121,7 @@ def test_backup_translates_recursive_exclude_for_restic(tmp_path: Path) -> None:
     _adapter(tmp_path, runner).backup(config, source_root=tmp_path / "shadow")
 
     source = (tmp_path / "shadow").resolve()
-    expected = source.joinpath(
-        "Audiolibraries", "Rutracker", "audio", "**", "*.ogg"
-    ).as_posix()
+    expected = source.joinpath("Audiolibraries", "Rutracker", "audio", "**", "*.ogg").as_posix()
     assert runner.exclude_files == [expected + "\n"]
 
 
@@ -152,9 +150,7 @@ def test_failed_backup_never_runs_retention(tmp_path: Path) -> None:
 
 
 def test_failed_check_repeats_cursor_and_blocks_backup(tmp_path: Path) -> None:
-    runner = FakeRunner(
-        [ResticProcessError("repository_io_error", "failed"), ResticResult(0, ())]
-    )
+    runner = FakeRunner([ResticProcessError("repository_io_error", "failed"), ResticResult(0, ())])
     adapter = _adapter(tmp_path, runner)
     config = _config()
     with pytest.raises(ResticProcessError):

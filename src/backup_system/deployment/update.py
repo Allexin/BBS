@@ -110,8 +110,7 @@ def update(
         if elapsed == 0 or elapsed - last_reported_second >= 5:
             remaining = wait_timeout_seconds - elapsed
             print(
-                f"Waiting for {service!r}: current status is {status}; "
-                f"timeout in {remaining}s",
+                f"Waiting for {service!r}: current status is {status}; timeout in {remaining}s",
                 flush=True,
             )
             last_reported_second = elapsed

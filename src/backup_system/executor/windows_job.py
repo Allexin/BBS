@@ -78,9 +78,7 @@ class ExecutorWindowsJob:
         return self._run_destination(
             config,
             smart_config,
-            lambda volume: adapter(
-                WindowsDataContext(PureWindowsPath(config.source.path), volume)
-            ),
+            lambda volume: adapter(WindowsDataContext(PureWindowsPath(config.source.path), volume)),
         )
 
     def run_repository(
@@ -91,12 +89,10 @@ class ExecutorWindowsJob:
         adapter: Callable[[VolumeObservation], T],
     ) -> ExecutorWindowsResult:
         marker = MarkerExpectation(
-                file=config.repository.marker_file,
-                marker_uuid=config.repository.marker_uuid,
-            )
-        return self._coordinate(
-            config.disk, marker, config.repository.path, smart_config, adapter
+            file=config.repository.marker_file,
+            marker_uuid=config.repository.marker_uuid,
         )
+        return self._coordinate(config.disk, marker, config.repository.path, smart_config, adapter)
 
     def _run_destination(
         self,
@@ -109,9 +105,7 @@ class ExecutorWindowsJob:
             if isinstance(config, SnapshotJobConfig)
             else config.destination.path
         )
-        return self._coordinate(
-            config.disk, marker_expectation(config), path, smart_config, action
-        )
+        return self._coordinate(config.disk, marker_expectation(config), path, smart_config, action)
 
     def _coordinate(
         self,

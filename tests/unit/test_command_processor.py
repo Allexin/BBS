@@ -169,9 +169,7 @@ def test_restore_is_queued_for_privileged_fifo_resolution(tmp_path: Path) -> Non
         spool = CommandSpool(layout)
         spool.accept_incoming()
         CommandProcessor(spool, operations, cancel_current=lambda: None).process_accepted()
-        kind, request = connection.execute(
-            "SELECT kind, request_json FROM operations"
-        ).fetchone()
+        kind, request = connection.execute("SELECT kind, request_json FROM operations").fetchone()
         assert kind == "resolve-restore"
         assert '"request_id"' in request
         assert '"version":"latest"' in request

@@ -82,9 +82,7 @@ class WindowsMirrorFileOperations:
         def progress_callback(message: ctypes.c_void_p, context: ctypes.c_void_p) -> int:
             del message, context
             return (
-                COPYFILE2_PROGRESS_CANCEL
-                if cancellation.requested
-                else COPYFILE2_PROGRESS_CONTINUE
+                COPYFILE2_PROGRESS_CANCEL if cancellation.requested else COPYFILE2_PROGRESS_CONTINUE
             )
 
         progress = _COPY_PROGRESS(progress_callback)

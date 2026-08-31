@@ -126,9 +126,7 @@ def test_prune_failure_is_warning() -> None:
 
 
 def test_cursor_reset_is_warning() -> None:
-    _, outcome = _run(
-        lambda: (_ for _ in ()).throw(SnapshotCursorResetWarning("cursor reset"))
-    )
+    _, outcome = _run(lambda: (_ for _ in ()).throw(SnapshotCursorResetWarning("cursor reset")))
     assert outcome.result == "warning"
 
 
