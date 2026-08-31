@@ -31,6 +31,8 @@ class FakeRunner:
         del expect_json
         command = tuple(arguments)  # type: ignore[arg-type]
         self.commands.append(command)
+        if "unlock" in command:
+            return ResticResult(0, ())
         if "--iexclude-file" in command:
             path = Path(command[command.index("--iexclude-file") + 1])
             self.exclude_files.append(path.read_text(encoding="utf-8"))
@@ -98,9 +100,14 @@ def test_backup_runs_snapshot_then_retention_then_observation(tmp_path: Path) ->
     result = _adapter(tmp_path, runner).backup(_config(), source_root=tmp_path / "shadow")
     assert result.snapshot_id == "abc"
     assert result.snapshots == ("abcdef",)
-    assert [command[3] for command in runner.commands] == ["backup", "forget", "snapshots"]
-    assert "--use-fs-snapshot" in runner.commands[0]
-    assert "--keep-weekly" in runner.commands[1]
+    assert [command[3] for command in runner.commands] == [
+        "unlock",
+        "backup",
+        "forget",
+        "snapshots",
+    ]
+    assert "--use-fs-snapshot" in runner.commands[1]
+    assert "--keep-weekly" in runner.commands[2]
     source = (tmp_path / "shadow").resolve()
     expected = source.joinpath("Cache").as_posix()
     assert runner.exclude_files == [expected + "\n"]
@@ -138,7 +145,7 @@ def test_keep_all_backup_skips_forget_and_observes_all_snapshots(tmp_path: Path)
 
     result = _adapter(tmp_path, runner).backup(config, source_root=tmp_path / "shadow")
 
-    assert [command[3] for command in runner.commands] == ["backup", "snapshots"]
+    assert [command[3] for command in runner.commands] == ["unlock", "backup", "snapshots"]
     assert result.snapshots == ("old", "new")
 
 
@@ -146,7 +153,7 @@ def test_failed_backup_never_runs_retention(tmp_path: Path) -> None:
     runner = FakeRunner([ResticProcessError("source_read_error", "failed")])
     with pytest.raises(ResticProcessError):
         _adapter(tmp_path, runner).backup(_config(), source_root=tmp_path / "shadow")
-    assert len(runner.commands) == 1
+    assert [command[3] for command in runner.commands] == ["unlock", "backup"]
 
 
 def test_failed_check_repeats_cursor_and_blocks_backup(tmp_path: Path) -> None:

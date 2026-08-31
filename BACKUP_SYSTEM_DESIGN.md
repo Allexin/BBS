@@ -2093,6 +2093,20 @@ compatibility test; общий поиск подстрок и локализов
 надёжная ранняя классификация невозможна, snapshot adapter не считается готовым:
 молча ослаблять fail-fast до «дождаться exit code после полного обхода» запрещено.
 
+Перед началом `backup` snapshot adapter выполняет `restic unlock` для этого
+repository. Команда используется без `--remove-all`: restic удаляет только stale
+locks от уже завершившихся процессов и сохраняет locks живых параллельных процессов.
+Это обязательный recovery preflight после interrupted run; его ошибка завершает job
+до создания нового snapshot. Ручная очистка stale lock перед повторным запуском не
+требуется.
+
+Перед началом `backup` snapshot adapter выполняет `restic unlock` для этого
+repository. Команда используется без `--remove-all`: restic удаляет только stale
+locks от уже завершившихся процессов и сохраняет locks живых параллельных процессов.
+Это обязательный recovery preflight после interrupted run; его ошибка завершает job
+до создания нового snapshot. Ручная очистка stale lock перед повторным запуском не
+требуется.
+
 Snapshot job поддерживает два явных режима retention: `policy` и `keep-all`.
 В режиме `policy` после успешного создания snapshot тот же backup-run применяет
 retention, ограничивая выборку tag и host конкретной job:

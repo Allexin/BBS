@@ -88,11 +88,12 @@ class SnapshotAdapter:
         if loaded.state.verification_gate:
             raise SnapshotVerificationRequired("snapshot verification gate blocks backup")
         self._runner.verify_version()
-        self._stage_sink("backing_up")
         with (
             self._auth(config) as base,
             _exclude_file(config.excludes, source_root, self._secret_directory) as exclude_file,
         ):
+            self._run([*base, "unlock"], config, expect_json=False)
+            self._stage_sink("backing_up")
             result = self._run(
                 [
                     *base,

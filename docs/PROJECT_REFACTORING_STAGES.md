@@ -232,6 +232,10 @@ Findings: F-12, F-15 и замечание о форматировании.
 - [x] Для F-01—F-15 зафиксировать: закрыто, отклонено с обоснованием или перенесено с
    явным риском и владельцем.
 - [x] Прогнать полный программный gate на поддерживаемых Python versions.
+- [x] Диагностировать failed retention production job и добавить snapshot-backup
+  preflight `restic unlock` для автоматической очистки только stale locks после
+  interrupted run. Реальный оставшийся lock намеренно сохранён для проверки следующей
+  job после deploy.
 - [ ] Выполнить только необходимые hardware/Stable acceptance после завершения активных
    production jobs.
 - [ ] Проверить в Stable:
