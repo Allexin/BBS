@@ -243,6 +243,9 @@ Findings: F-12, F-15 и замечание о форматировании.
   конкретного `--path`: selective snapshot restore теперь передаёт точный
   source-relative путь в restic через `--include`; полный restore остаётся только для
   явного `--path .`.
+- [x] Выполнить production selective-restore acceptance: `servers-s` README.md
+  восстановлен за 3 секунды в отдельный `B:\Test\BackupRestore-*`, сохранён logical
+  layout, SHA-256 совпал с source, `.restore-incomplete` после verification отсутствует.
 - [ ] Выполнить только необходимые hardware/Stable acceptance после завершения активных
    production jobs.
 - [ ] Проверить в Stable:
