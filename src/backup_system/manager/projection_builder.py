@@ -254,6 +254,9 @@ class ProjectionBuilder:
                 (job_id,),
             ).fetchone()
             metrics = self._latest_metrics(str(metrics_row[0])) if metrics_row else None
+            source_error_count, source_error_paths = self._source_read_errors(
+                str(health_row[6]) if health_row is not None else ""
+            )
             jobs.append(
                 PublicJob(
                     job_id=job_id,
@@ -278,9 +281,35 @@ class ProjectionBuilder:
                         _completed_duration(completed_row) if completed_row else None
                     ),
                     backup_metrics=metrics,
+                    source_read_error_count=source_error_count,
+                    source_read_error_paths=source_error_paths,
+                    source_read_error_report=(
+                        f"/backup-status/source-errors/{health_row[6]}.txt"
+                        if source_error_count and health_row is not None
+                        else None
+                    ),
                 )
             )
         return tuple(jobs), tuple(issues)
+
+    def _source_read_errors(self, run_id: str) -> tuple[int, tuple[str, ...]]:
+        if not run_id:
+            return 0, ()
+        row = self._connection.execute(
+            """SELECT payload_json FROM run_events
+            WHERE run_id = ? AND event_type = 'source_read_warning'
+            ORDER BY event_seq DESC LIMIT 1""",
+            (run_id,),
+        ).fetchone()
+        if row is None:
+            return 0, ()
+        try:
+            payload = json.loads(str(row[0]))
+            count = int(payload["error_count"])
+            paths = tuple(str(value) for value in payload["paths"][:10])
+        except (KeyError, TypeError, ValueError, json.JSONDecodeError):
+            return 0, ()
+        return max(0, count), paths
 
     def _smart_failure_is_excluded(self, run_id: str) -> bool:
         failed = self._connection.execute(

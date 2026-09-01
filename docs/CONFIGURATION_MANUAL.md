@@ -149,6 +149,29 @@ state or mount points. Add `disk` only for a separately identified carrier that 
 bring online for the operation and return offline afterward. A maintenance job must use
 the same repository and the same lifecycle choice as its snapshot owner.
 
+### 3.4 Source read errors
+
+Choose the terminal result for a snapshot that restic completed with unreadable source
+files:
+
+```yaml
+backup:
+  host: backup-host
+  tags: ['job:archive']
+  read_error_result: warning
+```
+
+`warning` keeps the incomplete snapshot, runs the configured retention, and makes the
+job warning visible in Web UI and Telegram. The job card shows the total unreadable-file
+count and at most 10 paths; a separate counter reports any remaining paths and a link
+opens the complete plain-text report. `failed`
+keeps the same diagnostic and retention behavior but marks the run failed. If restic
+does not create a snapshot, the run always fails.
+
+An older snapshot may still contain a previously readable version, but only while that
+snapshot remains inside the configured retention policy. A source read warning therefore
+requires operator action even when the run result is not failed.
+
 ### 3.3 Excluding an accepted-risk disk from system health
 
 Use this only when a degraded disk has a deliberately non-critical role. Copy the

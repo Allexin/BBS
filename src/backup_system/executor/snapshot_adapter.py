@@ -38,6 +38,13 @@ class SnapshotCursorResetWarning(SnapshotAdapterError):
     pass
 
 
+class SnapshotReadWarning(SnapshotAdapterError):
+    def __init__(self, paths: tuple[str, ...], *, error_count: int) -> None:
+        super().__init__(f"snapshot completed with {error_count} source read errors")
+        self.paths = paths
+        self.error_count = error_count
+
+
 class ResticRunner(Protocol):
     def verify_version(self) -> tuple[int, int, int]: ...
 
@@ -74,6 +81,7 @@ class SnapshotAdapter:
         secret_directory: Path,
         stage_sink: Callable[[str], None] | None = None,
         snapshot_sink: Callable[[str, int], None] | None = None,
+        source_warning_sink: Callable[[int, tuple[str, ...]], None] | None = None,
         auth_factory: ResticAuthFactory = restic_auth_arguments,
     ) -> None:
         self._runner = runner
@@ -81,6 +89,7 @@ class SnapshotAdapter:
         self._secret_directory = secret_directory
         self._stage_sink = stage_sink or (lambda stage: None)
         self._snapshot_sink = snapshot_sink or (lambda snapshot_id, bytes_added: None)
+        self._source_warning_sink = source_warning_sink or (lambda count, paths: None)
         self._auth_factory = auth_factory
 
     def backup(self, config: SnapshotJobConfig, *, source_root: Path) -> SnapshotBackupResult:
@@ -130,6 +139,16 @@ class SnapshotAdapter:
                     config,
                 )
             snapshots = self._snapshot_ids(base, config)
+        if result.source_read_errors:
+            paths = _source_error_paths(result.source_read_errors)
+            self._source_warning_sink(len(result.source_read_errors), paths)
+            if config.backup.read_error_result == "failed":
+                raise ResticProcessError(
+                    "source_read_error",
+                    f"snapshot completed with {len(result.source_read_errors)} source read errors",
+                    exit_code=result.exit_code,
+                )
+            raise SnapshotReadWarning(paths, error_count=len(result.source_read_errors))
         return SnapshotBackupResult(snapshot_id, bytes_added, snapshots)
 
     def _ensure_repository(
@@ -272,6 +291,15 @@ def _backup_summary(events: Sequence[Mapping[str, Any]]) -> tuple[str, int]:
     if not isinstance(snapshot_id, str) or not isinstance(bytes_added, int) or bytes_added < 0:
         raise SnapshotAdapterError("restic backup summary is invalid")
     return snapshot_id, bytes_added
+
+
+def _source_error_paths(errors: Sequence[Mapping[str, Any]]) -> tuple[str, ...]:
+    paths: list[str] = []
+    for error in errors:
+        item = error.get("item")
+        if isinstance(item, str) and item not in paths:
+            paths.append(item)
+    return tuple(paths)
 
 
 @contextmanager

@@ -389,6 +389,48 @@ class OperationsRepository:
             if cursor.rowcount != 1:
                 raise StateTransitionError("restore target belongs to no running restore")
 
+    def record_source_read_warning(
+        self,
+        run_id: UUID,
+        *,
+        error_count: int,
+        paths: tuple[str, ...],
+        observed_at: datetime | None = None,
+    ) -> None:
+        if error_count <= 0 or len(paths) > error_count:
+            raise ValueError("source read warning values are invalid")
+        timestamp = require_aware(observed_at or utc_now()).isoformat()
+        with self._connection:
+            cursor = self._connection.execute(
+                """UPDATE runs SET warning_count = warning_count + ?
+                WHERE run_id = ? AND state = ?""",
+                (error_count, str(run_id), RunState.RUNNING),
+            )
+            if cursor.rowcount != 1:
+                raise StateTransitionError("source read warning belongs to no running run")
+            self._insert_event(
+                run_id,
+                timestamp,
+                "source_read_warning",
+                {"error_count": error_count, "paths": list(paths)},
+            )
+            if self._notifications is not None:
+                row = self._connection.execute(
+                    """SELECT display_name FROM jobs WHERE job_id =
+                    (SELECT job_id FROM runs WHERE run_id = ?)""",
+                    (str(run_id),),
+                ).fetchone()
+                self._notifications.enqueue_in_transaction(
+                    deduplication_key=f"run:{run_id}:source-read-warning",
+                    run_id=run_id,
+                    kind="source_read_warning",
+                    payload={
+                        "job": str(row[0]) if row else "unknown",
+                        "error_count": error_count,
+                    },
+                    created_at=datetime.fromisoformat(timestamp),
+                )
+
     def complete_restore_metrics(
         self,
         run_id: UUID,

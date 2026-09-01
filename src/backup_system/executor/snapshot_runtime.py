@@ -8,7 +8,13 @@ from typing import Any
 from uuid import UUID
 
 from backup_system.common.config import MaintenanceJobConfig, SmartConfig, SnapshotJobConfig
-from backup_system.common.events import EventBase, Progress, SnapshotCreated, StageChanged
+from backup_system.common.events import (
+    EventBase,
+    Progress,
+    SnapshotCreated,
+    SourceReadWarning,
+    StageChanged,
+)
 from backup_system.common.time import utc_now
 from backup_system.executor.cancellation import CancellationToken
 from backup_system.executor.restic_process import ResticProcess
@@ -58,6 +64,14 @@ def run_snapshot_operation(
                 timestamp=utc_now(),
                 snapshot_id=snapshot_id,
                 bytes_added=bytes_added,
+            )
+        ),
+        source_warning_sink=lambda count, paths: event_sink(
+            SourceReadWarning(
+                event="source_read_warning",
+                timestamp=utc_now(),
+                error_count=count,
+                paths=paths,
             )
         ),
     )

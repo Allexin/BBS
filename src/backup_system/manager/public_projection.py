@@ -55,6 +55,9 @@ class PublicJob(PublicModel):
     last_success_at: AwareDatetime | None = None
     last_completed_duration_seconds: int | None = Field(default=None, ge=0)
     backup_metrics: PublicBackupMetrics | None = None
+    source_read_error_count: int = Field(default=0, ge=0)
+    source_read_error_paths: tuple[str, ...] = Field(default=(), max_length=10)
+    source_read_error_report: str | None = None
 
 
 class PublicProgress(PublicModel):

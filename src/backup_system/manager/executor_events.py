@@ -17,6 +17,7 @@ from backup_system.common.events import (
     SmartObserved,
     SmartTestDiskFinished,
     SnapshotCreated,
+    SourceReadWarning,
     StageChanged,
 )
 from backup_system.manager.operations import OperationsRepository, RunResult
@@ -114,6 +115,14 @@ class ExecutorRunEventProcessor:
         if isinstance(event, SnapshotCreated):
             self._snapshot_id = event.snapshot_id
             self._bytes_added = event.bytes_added
+            return None
+        if isinstance(event, SourceReadWarning):
+            self._operations.record_source_read_warning(
+                self._run_id,
+                error_count=event.error_count,
+                paths=event.paths,
+                observed_at=event.timestamp,
+            )
             return None
         if isinstance(event, RestoreVersionResolved):
             if self._resolved_restore_version is not None:

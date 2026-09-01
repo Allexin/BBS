@@ -44,6 +44,7 @@ class ResticProcessError(RuntimeError):
 class ResticResult:
     exit_code: int
     events: tuple[Mapping[str, Any], ...]
+    source_read_errors: tuple[Mapping[str, Any], ...] = ()
 
 
 class ResticProcess:
@@ -100,6 +101,7 @@ class ResticProcess:
             thread.start()
 
         events: list[Mapping[str, Any]] = []
+        source_read_errors: list[Mapping[str, Any]] = []
         detected: ResticFault | None = None
         try:
             while (
@@ -131,6 +133,14 @@ class ResticProcess:
                     ),
                     None,
                 )
+                if detected == "source_read_error":
+                    source_read_errors.extend(
+                        event
+                        for event in parsed
+                        if event.get("message_type") == "error"
+                        and event.get("during") == "archival"
+                    )
+                    detected = None
                 if detected is not None:
                     self._terminate(process)
                     raise ResticProcessError(
@@ -148,13 +158,15 @@ class ResticProcess:
                 process.wait(timeout=5)
             for thread in threads:
                 thread.join(timeout=2)
+        if return_code == 3 and source_read_errors:
+            return ResticResult(return_code, tuple(events), tuple(source_read_errors))
         if return_code != 0:
             raise ResticProcessError(
                 "command_failed",
                 f"restic {_operation_name(arguments)} failed with exit code {return_code}",
                 exit_code=return_code,
             )
-        return ResticResult(return_code, tuple(events))
+        return ResticResult(return_code, tuple(events), tuple(source_read_errors))
 
     def _terminate(self, process: subprocess.Popen[str]) -> None:
         if process.poll() is not None:

@@ -65,6 +65,14 @@ def render_notification(notification: PendingNotification) -> str:
                 f"Exit code: {_text(payload, 'exit_code')}",
             )
         )
+    if notification.kind == "source_read_warning":
+        return "\n".join(
+            (
+                f"Source read warning: {_text(payload, 'job')}",
+                f"Unreadable files: {_text(payload, 'error_count')}",
+                "Open the local BBS Web UI for file details",
+            )
+        )
     if notification.kind == "disk_offline_unconfirmed":
         return "\n".join(
             (

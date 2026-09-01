@@ -216,7 +216,7 @@ class DiskConfig(StrictModel):
 class SnapshotBackupConfig(StrictModel):
     host: str = Field(min_length=1)
     tags: tuple[str, ...]
-    read_error_result: Literal["failed"]
+    read_error_result: Literal["failed", "warning"]
 
 
 class SnapshotRetentionConfig(StrictModel):

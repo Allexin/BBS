@@ -29,6 +29,7 @@ from backup_system.executor.restore_target import RestoreTargetError
 from backup_system.executor.snapshot_adapter import (
     SnapshotCursorResetWarning,
     SnapshotPruneWarning,
+    SnapshotReadWarning,
     SnapshotVerificationRequired,
 )
 
@@ -115,7 +116,9 @@ def _failure_outcome(error: BaseException) -> ExecutorOutcome:
         return ExecutorOutcome("failed", ExecutorExitCode.DISK_IDENTITY_MISMATCH, False)
     if isinstance(error, (CancellationRequested, KeyboardInterrupt)):
         return ExecutorOutcome("cancelled", ExecutorExitCode.CANCELLED, False)
-    if isinstance(error, (SnapshotPruneWarning, SnapshotCursorResetWarning)):
+    if isinstance(
+        error, (SnapshotPruneWarning, SnapshotCursorResetWarning, SnapshotReadWarning)
+    ):
         return ExecutorOutcome("warning", ExecutorExitCode.SUCCESS_WITH_WARNING, True)
     if isinstance(error, SnapshotVerificationRequired):
         return ExecutorOutcome("failed", ExecutorExitCode.VERIFICATION_FAILED, True)

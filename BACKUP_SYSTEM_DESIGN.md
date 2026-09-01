@@ -1659,7 +1659,7 @@ disk:
 backup:
   host: backup-host
   tags: ['job:data']
-  read_error_result: failed
+  read_error_result: warning
 
 retention:
   mode: policy
@@ -1674,6 +1674,16 @@ verification:
   restore_test_paths:
     - 'F:\<control-file-relative-path>'
 ```
+
+Snapshot backup не прекращает restic на первой структурированной archival read
+error. Если restic завершил проход с incomplete exit code и создал snapshot, BBS
+фиксирует terminal `warning`, после чего выполняет обычный retention. Предыдущие
+версии нечитаемого файла сохраняются только пока их snapshots остаются в пределах
+настроенной retention policy; предупреждение требует реакции оператора.
+
+Run хранит полное число source read errors, но в public status публикуются не более
+10 проблемных путей. При большем числе UI показывает эти 10 путей и отдельный счётчик
+общего количества. Если restic не создал snapshot, операция остаётся `failed`.
 
 Форма `mirror` job использует те же `source`, `excludes` и `disk`, но вместо
 `repository`, `backup` и `retention` содержит один destination:

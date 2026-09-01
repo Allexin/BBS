@@ -12,6 +12,7 @@ from backup_system.executor.restic_process import ResticProcessError, ResticResu
 from backup_system.executor.snapshot_adapter import (
     SnapshotAdapter,
     SnapshotAdapterError,
+    SnapshotReadWarning,
     SnapshotVerificationRequired,
 )
 from backup_system.executor.snapshot_state import SnapshotStateStore
@@ -196,6 +197,42 @@ def test_failed_backup_never_runs_retention(tmp_path: Path) -> None:
     assert _operations(runner) == [
         "init", "unlock", "backup"
     ]
+
+
+def test_incomplete_backup_warns_after_retention_and_limits_paths(tmp_path: Path) -> None:
+    errors = tuple(
+        {"message_type": "error", "during": "archival", "item": f"T:\\bad-{index}"}
+        for index in range(12)
+    )
+    runner = FakeRunner(
+        [
+            ResticResult(
+                3,
+                ({"message_type": "summary", "snapshot_id": "partial", "data_added": 9},),
+                errors,
+            ),
+            ResticResult(0, ()),
+            ResticResult(0, ({"id": "partial"},)),
+        ]
+    )
+    observed: list[tuple[int, tuple[str, ...]]] = []
+    adapter = SnapshotAdapter(
+        runner=runner,
+        states=SnapshotStateStore(tmp_path / "state", tmp_path / "diagnostics"),
+        secret_directory=tmp_path / "secrets",
+        source_warning_sink=lambda count, paths: observed.append((count, paths)),
+    )
+    config = _config_at(tmp_path / "repository").model_copy(
+        update={
+            "backup": _config().backup.model_copy(update={"read_error_result": "warning"})
+        }
+    )
+
+    with pytest.raises(SnapshotReadWarning):
+        adapter.backup(config, source_root=tmp_path / "shadow")
+
+    assert _operations(runner) == ["init", "unlock", "backup", "forget", "snapshots"]
+    assert observed == [(12, tuple(f"T:\\bad-{index}" for index in range(12)))]
 
 
 def test_failed_check_repeats_cursor_and_blocks_backup(tmp_path: Path) -> None:

@@ -28,10 +28,16 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         )
         finished_run = operations.claim_next(started_at=now - timedelta(hours=2))
         assert finished_run is not None
+        operations.record_source_read_warning(
+            finished_run.run_id,
+            error_count=12,
+            paths=tuple(f"T:\\bad-{index}" for index in range(10)),
+            observed_at=now - timedelta(hours=1, minutes=1),
+        )
         operations.finish_run(
             finished_run.run_id,
-            result=RunResult.SUCCESS,
-            exit_code=0,
+            result=RunResult.WARNING,
+            exit_code=10,
             disk_offline_confirmed=True,
             finished_at=now - timedelta(hours=1),
         )
@@ -113,7 +119,12 @@ def test_builder_projects_jobs_queue_disks_volumes_and_smart_trends(tmp_path: Pa
         assert status.jobs[0].last_run is not None
         assert status.jobs[0].last_run.state == "queued"
         assert status.jobs[0].previous_run is not None
-        assert status.jobs[0].previous_run.result == "success"
+        assert status.jobs[0].previous_run.result == "warning"
+        assert status.jobs[0].source_read_error_count == 12
+        assert status.jobs[0].source_read_error_paths[-1] == r"T:\bad-9"
+        assert status.jobs[0].source_read_error_report == (
+            f"/backup-status/source-errors/{finished_run.run_id}.txt"
+        )
         assert status.jobs[0].backup_metrics is not None
         assert status.jobs[0].backup_metrics.repository_added_bytes == 100
         assert status.jobs[0].backup_metrics.observed_at == now

@@ -24,6 +24,7 @@ from backup_system.common.events import (
     RunFinished,
     SmartObserved,
     SmartTestDiskFinished,
+    SourceReadWarning,
     StageChanged,
     UnknownExecutorEvent,
 )
@@ -335,6 +336,8 @@ class ManagerApplication:
                 )
                 return
             processor.process(event)
+            if isinstance(event, SourceReadWarning):
+                self._publish_source_error_report(claimed.run_id, event)
             self._journal_executor_event(claimed, event)
 
         executor = self._executor_factory(on_event, self._write_executor_diagnostic)
@@ -379,6 +382,26 @@ class ManagerApplication:
             self._active_executor = None
             if request_file is not None:
                 request_file.unlink(missing_ok=True)
+
+    def _publish_source_error_report(self, run_id: UUID, event: SourceReadWarning) -> None:
+        directory = self._layout.public / "source-errors"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / f"{run_id}.txt"
+        temporary = directory / f".{run_id}.txt.tmp"
+        lines = [
+            f"Source read errors: {event.error_count}",
+            f"Generated: {event.timestamp.isoformat()}",
+            "",
+            *event.paths,
+        ]
+        try:
+            with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+                stream.write("\n".join(lines) + "\n")
+                stream.flush()
+                os.fsync(stream.fileno())
+            os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _write_restore_request(self, claimed: ClaimedRun) -> Path:
         if claimed.request is None:
@@ -436,6 +459,9 @@ class ManagerApplication:
             elif event.result in {"failed", "interrupted"}:
                 severity = "error"
             details["public_reason"] = f"Run finished: {event.result}"
+        elif isinstance(event, SourceReadWarning):
+            severity = "warning"
+            details["public_reason"] = f"Source read errors: {event.error_count}"
         elif isinstance(event, DiskOfflineFailed):
             severity = "error"
             details["public_reason"] = "Backup disk offline was not confirmed"

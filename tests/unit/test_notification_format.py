@@ -106,3 +106,14 @@ def test_failure_message_contains_only_operational_summary() -> None:
         )
     )
     assert text == "Operation failed: Data\nResult: failed\nExit code: 10"
+
+
+def test_source_read_warning_reports_count_without_private_paths() -> None:
+    message = render_notification(
+        _notification(
+            "source_read_warning",
+            {"job": "Archive", "error_count": 12},
+        )
+    )
+    assert "Unreadable files: 12" in message
+    assert "local BBS Web UI" in message
