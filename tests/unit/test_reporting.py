@@ -3,6 +3,7 @@ import json
 from datetime import UTC, datetime
 from uuid import UUID
 
+from backup_system.common.events import SourceReadWarning
 from backup_system.common.exit_codes import ExecutorExitCode
 from backup_system.executor.cancellation import CancellationRequested
 from backup_system.executor.lifecycle import LifecycleCleanupError, LifecycleOperationError
@@ -36,6 +37,22 @@ def test_success_emits_only_json_and_exactly_one_terminal() -> None:
     assert sum(event["event"] == "run_finished" for event in events) == 1
     assert events[-1]["disk_offline_confirmed"] is True
     assert outcome.exit_code == ExecutorExitCode.SUCCESS
+
+
+def test_json_line_protocol_is_ascii_safe_for_windows_unicode_paths() -> None:
+    stream = io.StringIO()
+    JsonLineEventSink(stream).emit(
+        SourceReadWarning(
+            event="source_read_warning",
+            timestamp=NOW,
+            error_count=1,
+            paths=(r"T:\Книги\повреждённый.rar",),
+        )
+    )
+
+    encoded = stream.getvalue().encode("ascii")
+    assert b"\\u041a" in encoded
+    assert json.loads(encoded)["paths"] == [r"T:\Книги\повреждённый.rar"]
 
 
 def test_offline_failure_has_normalized_exit_and_one_terminal() -> None:

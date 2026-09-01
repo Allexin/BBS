@@ -50,7 +50,7 @@ class JsonLineEventSink:
         self._stream = stream
 
     def emit(self, event: EventBase) -> None:
-        self._stream.write(event.model_dump_json() + "\n")
+        self._stream.write(event.model_dump_json(ensure_ascii=True) + "\n")
         self._stream.flush()
 
 

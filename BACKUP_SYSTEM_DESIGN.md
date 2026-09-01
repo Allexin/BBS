@@ -1695,7 +1695,10 @@ Run хранит полное число source read errors, но в public stat
 общего количества. Полный список executor атомарно публикует отдельным plain-text
 файлом; через bounded JSONL protocol передаются только общий счётчик и первые 10
 путей, поэтому массовый source failure не может переполнить event line или основной
-status projection. Если restic не создал snapshot, операция остаётся `failed`.
+status projection. Все JSONL events сериализуются ASCII-safe с Unicode escape:
+Windows console code page не участвует в transport contract, а manager всегда
+декодирует валидный UTF-8/ASCII JSON. Если restic не создал snapshot, операция
+остаётся `failed`.
 
 Форма `mirror` job использует те же `source`, `excludes` и `disk`, но вместо
 `repository`, `backup` и `retention` содержит один destination:
