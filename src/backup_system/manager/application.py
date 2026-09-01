@@ -337,8 +337,6 @@ class ManagerApplication:
                 )
                 return
             processor.process(event)
-            if isinstance(event, SourceReadWarning):
-                self._publish_source_error_report(claimed.run_id, event)
             self._journal_executor_event(claimed, event)
 
         executor = self._executor_factory(on_event, self._write_executor_diagnostic)
@@ -359,7 +357,9 @@ class ManagerApplication:
             self._record_schedule_completion(claimed, result)
         except Exception as error:
             self._write_executor_diagnostic(
-                f"manager classified executor failure: {type(error).__name__}\n".encode("ascii")
+                (
+                    f"manager classified executor failure: {type(error).__name__}: {error}\n"
+                ).encode("ascii", errors="backslashreplace")
             )
             if self._operations.run_is_active(claimed.run_id):
                 self._operations.finish_run(
@@ -383,26 +383,6 @@ class ManagerApplication:
             self._active_executor = None
             if request_file is not None:
                 request_file.unlink(missing_ok=True)
-
-    def _publish_source_error_report(self, run_id: UUID, event: SourceReadWarning) -> None:
-        directory = self._layout.public / "source-errors"
-        directory.mkdir(parents=True, exist_ok=True)
-        path = directory / f"{run_id}.txt"
-        temporary = directory / f".{run_id}.txt.tmp"
-        lines = [
-            f"Source read errors: {event.error_count}",
-            f"Generated: {event.timestamp.isoformat()}",
-            "",
-            *event.paths,
-        ]
-        try:
-            with temporary.open("x", encoding="utf-8", newline="\n") as stream:
-                stream.write("\n".join(lines) + "\n")
-                stream.flush()
-                os.fsync(stream.fileno())
-            os.replace(temporary, path)
-        finally:
-            temporary.unlink(missing_ok=True)
 
     def _write_restore_request(self, claimed: ClaimedRun) -> Path:
         if claimed.request is None:

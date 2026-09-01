@@ -10,6 +10,8 @@ from backup_system.common.events import (
     RestoreVersionResolved,
     RunFinished,
     RunStarted,
+    SnapshotCreated,
+    SourceReadWarning,
 )
 from backup_system.common.ids import new_command_id
 from backup_system.manager.application import ManagerApplication, _append_rotating_log
@@ -147,6 +149,44 @@ class _SuccessfulExecutor:
         )
         callback(terminal)
         return ExecutorProcessResult(0, terminal)
+
+    async def cancel_current(self) -> bool:
+        return True
+
+
+class _SourceWarningExecutor:
+    def __init__(self, on_event: object) -> None:
+        self._on_event = on_event
+
+    async def run(self, invocation: object) -> ExecutorProcessResult:
+        now = datetime.now(UTC)
+        callback = self._on_event
+        callback(
+            RunStarted(event="run_started", timestamp=now, run_id=invocation.run_id, job_id="data")
+        )
+        callback(
+            SnapshotCreated(
+                event="snapshot_created", timestamp=now, snapshot_id="partial", bytes_added=7
+            )
+        )
+        callback(
+            SourceReadWarning(
+                event="source_read_warning",
+                timestamp=now,
+                error_count=4,
+                paths=tuple(f"T:\\bad-{index}" for index in range(4)),
+            )
+        )
+        callback(DiskOfflineConfirmed(event="disk_offline_confirmed", timestamp=now))
+        terminal = RunFinished(
+            event="run_finished",
+            timestamp=now,
+            result="warning",
+            exit_code=10,
+            disk_offline_confirmed=True,
+        )
+        callback(terminal)
+        return ExecutorProcessResult(10, terminal)
 
     async def cancel_current(self) -> bool:
         return True
@@ -347,6 +387,48 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         assert '"event":"disk_offline_confirmed"' not in public_day
     finally:
         journal.close()
+        connection.close()
+
+
+def test_source_warning_is_persisted_with_notification(tmp_path: Path) -> None:
+    root = tmp_path / "Stable"
+    root.mkdir()
+    (root / "backup-system.root").write_text("test", encoding="ascii")
+    layout = RuntimeLayout(root)
+    initialize_data_layout(layout)
+    connection = open_manager_database(layout.database)
+    notifications = NotificationRepository(connection)
+    operations = OperationsRepository(connection, notifications, managed_disk_jobs=set())
+    config = _config()
+    operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+    application = ManagerApplication(
+        layout=layout,
+        config=config,
+        operations=operations,
+        executor_factory=lambda on_event, on_stderr: _SourceWarningExecutor(on_event),
+    )
+    application.initialize()
+    command = RunCommand(
+        command_id=new_command_id(),
+        created_at=datetime.now(UTC),
+        kind="run",
+        job_id="data",
+    )
+    publish_command(root, command)
+    try:
+        async def execute() -> None:
+            assert await application.run_iteration()
+            await application.wait_executor()
+
+        asyncio.run(execute())
+        row = connection.execute(
+            "SELECT run_id, result, exit_code, snapshot_id, warning_count FROM runs"
+        ).fetchone()
+        assert row[1:] == ("warning", 10, "partial", 4)
+        assert connection.execute(
+            "SELECT kind, json_extract(payload_json, '$.error_count') FROM notifications"
+        ).fetchone() == ("source_read_warning", 4)
+    finally:
         connection.close()
 
 

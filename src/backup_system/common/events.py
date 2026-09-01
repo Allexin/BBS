@@ -49,7 +49,7 @@ class SnapshotCreated(EventBase):
 class SourceReadWarning(EventBase):
     event: Literal["source_read_warning"]
     error_count: int = Field(gt=0)
-    paths: tuple[str, ...]
+    paths: tuple[str, ...] = Field(max_length=10)
 
 
 class RestoreVersionResolved(EventBase):

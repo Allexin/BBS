@@ -112,4 +112,6 @@ def _decode_event(line: bytes) -> KnownExecutorEvent | UnknownExecutorEvent:
     try:
         return parse_executor_event(value)
     except (TypeError, ValueError) as error:
-        raise ExecutorProtocolError("executor event does not match its schema") from error
+        raise ExecutorProtocolError(
+            f"executor event {value.get('event', 'unknown')!r} does not match its schema: {error}"
+        ) from error

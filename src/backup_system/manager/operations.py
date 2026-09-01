@@ -400,7 +400,7 @@ class OperationsRepository:
         paths: tuple[str, ...],
         observed_at: datetime | None = None,
     ) -> None:
-        if error_count <= 0 or len(paths) > error_count:
+        if error_count <= 0 or len(paths) > min(error_count, 10):
             raise ValueError("source read warning values are invalid")
         timestamp = require_aware(observed_at or utc_now()).isoformat()
         with self._connection:

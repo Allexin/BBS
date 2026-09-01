@@ -147,7 +147,10 @@ class ExecutorProcessRunner:
                 protocol_error = (
                     error
                     if isinstance(error, ExecutorProtocolError)
-                    else ExecutorProtocolError("executor event handler rejected an event")
+                    else ExecutorProtocolError(
+                        "executor event handler rejected "
+                        f"{type(event).__name__}: {type(error).__name__}: {error}"
+                    )
                 )
                 await self.cancel_current()
         if protocol_error is None:

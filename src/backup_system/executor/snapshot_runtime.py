@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Mapping
 from pathlib import Path, PureWindowsPath
 from typing import Any
@@ -66,13 +67,8 @@ def run_snapshot_operation(
                 bytes_added=bytes_added,
             )
         ),
-        source_warning_sink=lambda count, paths: event_sink(
-            SourceReadWarning(
-                event="source_read_warning",
-                timestamp=utc_now(),
-                error_count=count,
-                paths=paths,
-            )
+        source_warning_sink=lambda count, paths: _emit_source_warning(
+            runtime_root, run_id, count, paths, event_sink
         ),
     )
     windows_job = build_windows_job(
@@ -140,3 +136,33 @@ def _emit_progress(event: Mapping[str, Any], sink: Callable[[EventBase], None]) 
 
 def _optional_nonnegative_int(value: object) -> int | None:
     return value if isinstance(value, int) and value >= 0 else None
+
+
+def _emit_source_warning(
+    runtime_root: Path,
+    run_id: UUID,
+    error_count: int,
+    paths: tuple[str, ...],
+    sink: Callable[[EventBase], None],
+) -> None:
+    directory = runtime_root / "data" / "public" / "source-errors"
+    directory.mkdir(parents=True, exist_ok=True)
+    report = directory / f"{run_id}.txt"
+    temporary = directory / f".{run_id}.txt.tmp"
+    lines = [f"Source read errors: {error_count}", "", *paths]
+    try:
+        with temporary.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write("\n".join(lines) + "\n")
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, report)
+    finally:
+        temporary.unlink(missing_ok=True)
+    sink(
+        SourceReadWarning(
+            event="source_read_warning",
+            timestamp=utc_now(),
+            error_count=error_count,
+            paths=paths[:10],
+        )
+    )
