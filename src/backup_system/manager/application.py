@@ -18,6 +18,7 @@ from zoneinfo import ZoneInfo
 from backup_system import __version__
 from backup_system.common.config import ManagerConfig, SmartConfig
 from backup_system.common.events import (
+    DiskOfflineConfirmed,
     DiskOfflineFailed,
     KnownExecutorEvent,
     Progress,
@@ -448,6 +449,10 @@ class ManagerApplication:
 
     def _journal_executor_event(self, claimed: ClaimedRun, event: KnownExecutorEvent) -> None:
         if isinstance(event, Progress):
+            return
+        if isinstance(event, DiskOfflineConfirmed) and not self._operations.requires_disk_offline(
+            claimed.job_id
+        ):
             return
         severity: Severity = "info"
         details: dict[str, object] = {"operation_kind": claimed.kind}

@@ -94,6 +94,9 @@ class OperationsRepository:
     def _requires_disk_offline(self, job_id: str) -> bool:
         return self._managed_disk_jobs is None or job_id in self._managed_disk_jobs
 
+    def requires_disk_offline(self, job_id: str) -> bool:
+        return self._requires_disk_offline(job_id)
+
     @property
     def connection(self) -> sqlite3.Connection:
         """Expose the manager-owned connection to composed repositories."""

@@ -285,7 +285,7 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
     layout = RuntimeLayout(root)
     initialize_data_layout(layout)
     connection = open_manager_database(layout.database)
-    operations = OperationsRepository(connection)
+    operations = OperationsRepository(connection, managed_disk_jobs=set())
     config = _config()
     for job in config.jobs:
         operations.upsert_job(
@@ -341,9 +341,10 @@ def test_manual_spool_command_reaches_executor_and_terminal_state(tmp_path: Path
         index = PublicLogIndex.model_validate_json(
             (layout.public_logs / "index.json").read_text(encoding="utf-8")
         )
-        assert index.days[0].record_count == 4
+        assert index.days[0].record_count == 3
         public_day = (layout.public_logs / index.days[0].file).read_text(encoding="utf-8")
         assert '"job_display_name":"Data"' in public_day
+        assert '"event":"disk_offline_confirmed"' not in public_day
     finally:
         journal.close()
         connection.close()
