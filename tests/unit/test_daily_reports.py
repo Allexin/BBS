@@ -59,8 +59,8 @@ def test_due_report_summarizes_backups_and_errors_once(tmp_path: Path) -> None:
         payload = json.loads(
             str(connection.execute("SELECT payload_json FROM notifications").fetchone()[0])
         )
-        assert payload["backups"] == ["Data: failed, 3600s"]
-        assert payload["errors"] == ["Data backup: failed"]
+        assert payload["backups"] == ["Data: 1 run (1 failed); latest failed, 3600s"]
+        assert payload["errors"] == []
         assert not store.poll(
             cron="0 9 * * *",
             timezone="UTC",
@@ -68,5 +68,66 @@ def test_due_report_summarizes_backups_and_errors_once(tmp_path: Path) -> None:
             now=due + timedelta(seconds=5),
             poll_seconds=5,
         ).formed
+    finally:
+        connection.close()
+
+
+def test_daily_report_groups_repeated_runs_and_does_not_repeat_backup_errors(
+    tmp_path: Path,
+) -> None:
+    connection = open_manager_database(tmp_path / "manager.sqlite3")
+    operations = OperationsRepository(connection)
+    store = DailyReportStore(connection, NotificationRepository(connection))
+    start = datetime(2026, 8, 28, tzinfo=UTC)
+    try:
+        operations.upsert_job(job_id="data", display_name="Data", enabled=True, config_valid=True)
+        for index, result in enumerate((RunResult.FAILED, RunResult.SUCCESS)):
+            operations.enqueue(
+                deduplication_key=f"backup:{index}",
+                job_id="data",
+                kind="backup",
+                trigger_source="manual",
+                queued_at=start + timedelta(minutes=index),
+            )
+            run = operations.claim_next(started_at=start + timedelta(minutes=index))
+            assert run is not None
+            operations.finish_run(
+                run.run_id,
+                result=result,
+                exit_code=0,
+                disk_offline_confirmed=True,
+                finished_at=start + timedelta(minutes=index, seconds=10),
+            )
+        operations.enqueue(
+            deduplication_key="check:one",
+            job_id="data",
+            kind="check",
+            trigger_source="manual",
+            queued_at=start + timedelta(minutes=3),
+        )
+        check = operations.claim_next(started_at=start + timedelta(minutes=3))
+        assert check is not None
+        operations.finish_run(
+            check.run_id,
+            result=RunResult.FAILED,
+            exit_code=1,
+            disk_offline_confirmed=True,
+            finished_at=start + timedelta(minutes=3, seconds=5),
+        )
+        store.initialize(cron="0 9 * * *", timezone="UTC", now=start)
+        store.poll(
+            cron="0 9 * * *",
+            timezone="UTC",
+            health="warning",
+            now=start + timedelta(hours=9, seconds=1),
+            poll_seconds=5,
+        )
+        payload = json.loads(
+            str(connection.execute("SELECT payload_json FROM notifications").fetchone()[0])
+        )
+        assert payload["backups"] == [
+            "Data: 2 runs (1 success, 1 failed); latest success, 10s"
+        ]
+        assert payload["errors"] == ["Data check: 1 affected run (1 failed)"]
     finally:
         connection.close()

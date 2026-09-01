@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -134,8 +135,8 @@ class DailyReportStore:
             ORDER BY runs.finished_at""",
             (period_start.isoformat(), period_end.isoformat()),
         ).fetchall()
-        backups: list[str] = []
-        errors: list[str] = []
+        backup_runs: dict[str, list[tuple[str, int]]] = {}
+        other_problems: dict[tuple[str, str], list[tuple[str, int]]] = {}
         for name, kind, result, started_at, finished_at, error_count in rows:
             duration = int(
                 (
@@ -143,11 +144,22 @@ class DailyReportStore:
                     - datetime.fromisoformat(str(started_at))
                 ).total_seconds()
             )
-            summary = f"{name}: {result}, {duration}s"
             if str(kind) == "backup":
-                backups.append(summary)
-            if str(result) in {"failed", "cancelled", "interrupted"} or int(error_count) > 0:
-                errors.append(f"{name} {kind}: {result}")
+                backup_runs.setdefault(str(name), []).append((str(result), duration))
+            elif (
+                str(result) in {"failed", "cancelled", "interrupted", "warning"}
+                or int(error_count) > 0
+            ):
+                other_problems.setdefault((str(name), str(kind)), []).append(
+                    (str(result), int(error_count))
+                )
+        backups = [
+            _backup_summary(name, values) for name, values in backup_runs.items()
+        ]
+        errors = [
+            _problem_summary(name, kind, values)
+            for (name, kind), values in other_problems.items()
+        ]
         return {
             "period_from": period_start.isoformat(),
             "period_to": period_end.isoformat(),
@@ -177,3 +189,32 @@ def _schedule(cron: str, timezone: str) -> ScheduleConfig:
 
 def _utc(value: datetime) -> datetime:
     return require_aware(value).astimezone(UTC)
+
+
+def _backup_summary(name: str, values: list[tuple[str, int]]) -> str:
+    counts = _result_counts(result for result, _ in values)
+    latest_result, latest_duration = values[-1]
+    return (
+        f"{name}: {len(values)} {_run_word(len(values))} ({counts}); "
+        f"latest {latest_result}, {latest_duration}s"
+    )
+
+
+def _problem_summary(name: str, kind: str, values: list[tuple[str, int]]) -> str:
+    counts = _result_counts(result for result, _ in values)
+    recorded_errors = sum(error_count for _, error_count in values)
+    suffix = f", {recorded_errors} recorded errors" if recorded_errors else ""
+    return f"{name} {kind}: {len(values)} affected {_run_word(len(values))} ({counts}){suffix}"
+
+
+def _result_counts(results: Iterable[str]) -> str:
+    counts: dict[str, int] = {}
+    for result in results:
+        value = str(result)
+        counts[value] = counts.get(value, 0) + 1
+    order = ("success", "warning", "failed", "cancelled", "interrupted")
+    return ", ".join(f"{counts[value]} {value}" for value in order if value in counts)
+
+
+def _run_word(count: int) -> str:
+    return "run" if count == 1 else "runs"
